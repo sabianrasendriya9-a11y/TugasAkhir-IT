@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TripMate — Smart Trip Planner</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- ======================= TOAST CONTAINER ======================= -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- ======================= AUTH PAGE (LOGIN/REGISTER) ======================= -->
+    <div id="authPage" class="auth-page">
+      <div class="auth-bg-decor"></div>
+      <div class="auth-card fade-in">
+        <div class="auth-logo">
+          <svg viewBox="0 0 64 64" class="logo-icon" width="52" height="52">
+            <path
+              d="M32 4c9 8 9 18 9 18l14 9-2 5-15-4s-1 10-6 17c-5-7-6-17-6-17l-15 4-2-5 14-9s0-10 9-18z"
+              fill="url(#gradLogo)"
+            />
+            <circle cx="32" cy="24" r="3.2" fill="#fff" opacity="0.85" />
+            <defs>
+              <linearGradient id="gradLogo" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#06b6d4" />
+                <stop offset="100%" stop-color="#0369a1" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <h1>Trip<span>Mate</span></h1>
+          <p class="auth-tagline">
+            Teman cerdas untuk merencanakan setiap perjalananmu
+          </p>
+        </div>
+
+        <div class="auth-tabs">
+          <button class="auth-tab active" data-tab="login">Masuk</button>
+          <button class="auth-tab" data-tab="register">Daftar</button>
+        </div>
+
+        <!-- LOGIN TAB -->
+        <div class="auth-form-wrap" id="loginForm">
+          <div id="loginExisting" class="hidden">
+            <div class="login-existing-card">
+              <div class="avatar-circle" id="loginAvatar">T</div>
+              <div>
+                <p class="login-existing-name" id="loginExistingName">
+                  Nama Pengguna
+                </p>
+                <p class="login-existing-email" id="loginExistingEmail">
+                  email@contoh.com
+                </p>
+              </div>
+            </div>
+            <button class="btn btn-primary btn-block" id="btnLoginExisting">
+              Masuk sebagai akun ini
+            </button>
+          </div>
+          <div id="loginEmpty" class="hidden">
+            <p class="auth-empty-text">
+              Belum ada akun tersimpan di perangkat ini. Silakan daftar terlebih
+              dahulu.
+            </p>
+            <button class="btn btn-secondary btn-block" id="btnGoRegister">
+              Buat Akun Baru
+            </button>
+          </div>
+        </div>
+
+        <!-- REGISTER TAB -->
+        <form class="auth-form-wrap hidden" id="registerForm">
+          <div class="form-group">
+            <label for="regName">Nama Lengkap</label>
+            <input
+              type="text"
+              id="regName"
+              placeholder="cth. Andi Saputra"
+              required
+            />
+          </div>
+          <div class="form-group">
+            <label for="regEmail">Email</label>
+            <input
+              type="email"
+              id="regEmail"
+              placeholder="cth. andi@email.com"
+              required
+            />
+          </div>
+          <div class="form-group">
+            <label for="regPhone">Nomor HP</label>
+            <input
+              type="tel"
+              id="regPhone"
+              placeholder="cth. 081234567890"
+              required
+            />
+          </div>
+          <div class="form-group">
+            <label for="regAddress">Alamat Lengkap</label>
+            <textarea
+              id="regAddress"
+              rows="2"
+              placeholder="cth. Jl. Merdeka No. 10, Malang"
+              required
+            ></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">
+            Daftar & Mulai
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- ======================= MAIN APP ======================= -->
+    <div id="appShell" class="app-shell hidden">
+      <!-- ---------- SIDEBAR (desktop) / drawer (mobile) ---------- -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-logo">
+          <svg viewBox="0 0 64 64" width="34" height="34">
+            <path
+              d="M32 4c9 8 9 18 9 18l14 9-2 5-15-4s-1 10-6 17c-5-7-6-17-6-17l-15 4-2-5 14-9s0-10 9-18z"
+              fill="url(#gradLogo2)"
+            />
+            <defs>
+              <linearGradient id="gradLogo2" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#06b6d4" />
+                <stop offset="100%" stop-color="#0369a1" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <span>Trip<b>Mate</b></span>
+        </div>
+
+        <nav class="sidebar-nav">
+          <button class="nav-item active" data-page="dashboard">
+            <i class="icon">🏠</i><span>Dashboard</span>
+          </button>
+          <button class="nav-item" data-page="itinerary">
+            <i class="icon">🗓️</i><span>Itinerary</span>
+          </button>
+          <button class="nav-item" data-page="places">
+            <i class="icon">📍</i><span>Tempat Sekitar</span>
+          </button>
+          <button class="nav-item" data-page="budget">
+            <i class="icon">💰</i><span>Budget</span>
+          </button>
+          <button class="nav-item" data-page="packing">
+            <i class="icon">🎒</i><span>Packing List</span>
+          </button>
+          <button class="nav-item" data-page="notes">
+            <i class="icon">📝</i><span>Catatan</span>
+          </button>
+          <button class="nav-item" data-page="profile">
+            <i class="icon">👤</i><span>Profil</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <button class="nav-item" id="darkModeToggleSidebar">
+            <i class="icon">🌙</i><span>Dark Mode</span>
+          </button>
+          <button class="nav-item logout-item" id="logoutBtn">
+            <i class="icon">🚪</i><span>Logout</span>
+          </button>
+        </div>
+      </aside>
+
+      <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+      <!-- ---------- MAIN CONTENT ---------- -->
+      <div class="main-content">
+        <!-- TOP NAVBAR -->
+        <header class="topbar">
+          <button class="hamburger-btn" id="hamburgerBtn" aria-label="Menu">
+            <span></span><span></span><span></span>
+          </button>
+
+          <div class="topbar-search">
+            <input
+              type="text"
+              id="globalSearch"
+              placeholder="Cari trip, destinasi, catatan, aktivitas..."
+            />
+            <div class="search-results hidden" id="searchResults"></div>
+          </div>
+
+          <div class="topbar-right">
+            <button class="icon-btn" id="darkModeToggleTop" title="Dark Mode">
+              🌙
+            </button>
+            <div class="topbar-user">
+              <div class="avatar-circle small" id="navAvatar">T</div>
+              <span id="navUserName" class="topbar-username">Pengguna</span>
+            </div>
+          </div>
+        </header>
+
+        <!-- ============ PAGE: DASHBOARD ============ -->
+        <section class="page active" id="page-dashboard">
+          <div class="hero-section fade-in">
+            <div class="hero-overlay"></div>
+            <div class="hero-content">
+              <p class="hero-greeting" id="heroGreeting">Halo, Pengguna 👋</p>
+              <h1>Rencanakan perjalananmu</h1>
+              <p class="hero-sub">
+                Jelajahi destinasi baru, atur itinerary, dan kelola budget dalam
+                satu aplikasi.
+              </p>
+              <div class="hero-actions">
+                <button class="btn btn-light" id="btnCariSekitar">
+                  📍 Cari Tempat Sekitar
+                </button>
+                <button class="btn btn-outline-light" id="btnLihatItinerary">
+                  🗓️ Lihat Itinerary
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="stats-grid">
+            <div class="stat-card fade-in">
+              <div
+                class="stat-icon"
+                style="background: linear-gradient(135deg, #0ea5e9, #0369a1)"
+              >
+                ✈️
+              </div>
+              <div>
+                <p class="stat-value" id="statTotalTrip">0</p>
+                <p class="stat-label">Total Trip</p>
+              </div>
+            </div>
+            <div class="stat-card fade-in">
+              <div
+                class="stat-icon"
+                style="background: linear-gradient(135deg, #22c55e, #15803d)"
+              >
+                💵
+              </div>
+              <div>
+                <p class="stat-value" id="statTotalExpense">Rp 0</p>
+                <p class="stat-label">Total Pengeluaran</p>
+              </div>
+            </div>
+            <div class="stat-card fade-in">
+              <div
+                class="stat-icon"
+                style="background: linear-gradient(135deg, #06b6d4, #0891b2)"
+              >
+                🎒
+              </div>
+              <div>
+                <p class="stat-value" id="statPacking">0%</p>
+                <p class="stat-label">Progress Packing</p>
+              </div>
+            </div>
+            <div class="stat-card fade-in">
+              <div
+                class="stat-icon"
+                style="background: linear-gradient(135deg, #f59e0b, #d97706)"
+              >
+                📡
+              </div>
+              <div>
+                <p class="stat-value" id="statGps">Nonaktif</p>
+                <p class="stat-label">Status GPS</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="dashboard-grid">
+            <div class="dash-card fade-in">
+              <div class="dash-card-header">
+                <h3>Perjalanan Aktif</h3>
+                <button class="btn btn-sm btn-primary" id="btnNewTripDash">
+                  + Trip Baru
+                </button>
+              </div>
+              <div id="activeTripBox" class="active-trip-box">
+                <p class="empty-text">
+                  Belum ada perjalanan aktif. Buat trip baru untuk memulai!
+                </p>
+              </div>
+            </div>
+
+            <div class="dash-card fade-in">
+              <div class="dash-card-header"><h3>Lokasi Pengguna</h3></div>
+              <div id="userLocationBox" class="location-box">
+                <p class="empty-text">Lokasi belum dideteksi.</p>
+                <button
+                  class="btn btn-secondary btn-sm"
+                  id="btnDetectLocationDash"
+                >
+                  Deteksi Lokasi Saya
+                </button>
+              </div>
+            </div>
+
+            <div class="dash-card fade-in">
+              <div class="dash-card-header"><h3>Ringkasan Budget</h3></div>
+              <div id="budgetSummaryBox" class="budget-summary-box">
+                <p class="empty-text">Belum ada data budget.</p>
+              </div>
+            </div>
+
+            <div class="dash-card fade-in">
+              <div class="dash-card-header"><h3>Ringkasan Packing</h3></div>
+              <div id="packingSummaryBox" class="packing-summary-box">
+                <p class="empty-text">Belum ada barang di packing list.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ PAGE: ITINERARY ============ -->
+        <section class="page" id="page-itinerary">
+          <div class="page-header">
+            <h2>Itinerary</h2>
+            <button class="btn btn-primary" id="btnAddItinerary">
+              + Tambah Aktivitas
+            </button>
+          </div>
+          <div class="page-header" style="margin-top: -10px">
+            <select id="itineraryTripSelect" class="select-input"></select>
+          </div>
+          <div id="itineraryList" class="itinerary-list"></div>
+        </section>
+
+        <!-- ============ PAGE: PLACES (LOKASI SEKITAR) ============ -->
+        <section class="page" id="page-places">
+          <div class="page-header">
+            <h2>Tempat Sekitar</h2>
+            <button class="btn btn-primary" id="btnDetectLocationPlaces">
+              📍 Deteksi Lokasi Saya
+            </button>
+          </div>
+          <div id="placesStatusBox" class="places-status-box">
+            <p class="empty-text">
+              Aktifkan lokasi untuk menemukan tempat menarik di sekitarmu.
+            </p>
+          </div>
+          <div class="places-filter" id="placesFilter">
+            <button class="chip active" data-filter="all">Semua</button>
+            <button class="chip" data-filter="wisata">Wisata</button>
+            <button class="chip" data-filter="kuliner">Kuliner</button>
+            <button class="chip" data-filter="cafe">Cafe</button>
+            <button class="chip" data-filter="hotel">Hotel</button>
+            <button class="chip" data-filter="budaya">Budaya/Religi</button>
+            <button class="chip" data-filter="taman">Taman</button>
+            <button class="chip" data-filter="mall">Mall</button>
+            <button class="chip" data-filter="penting">Tempat Penting</button>
+          </div>
+          <p
+            style="
+              font-size: 12px;
+              color: var(--text-muted);
+              margin: -10px 0 16px;
+            "
+          >
+            📌 Menampilkan data kurasi tempat di Kota Probolinggo, digabung
+            dengan tempat sekitar dari OpenStreetMap saat lokasi aktif.
+            Koordinat tempat kurasi bersifat perkiraan.
+          </p>
+          <div id="placesGrid" class="places-grid"></div>
+        </section>
+
+        <!-- ============ PAGE: BUDGET ============ -->
+        <section class="page" id="page-budget">
+          <div class="page-header">
+            <h2>Budget Perjalanan</h2>
+            <button class="btn btn-primary" id="btnAddBudget">
+              + Catat Pengeluaran
+            </button>
+          </div>
+          <div class="budget-overview-grid">
+            <div class="budget-overview-card">
+              <p class="label">Total Budget</p>
+              <p class="value" id="budgetTotalPlan">Rp 0</p>
+            </div>
+            <div class="budget-overview-card">
+              <p class="label">Total Pengeluaran</p>
+              <p class="value" id="budgetTotalSpent">Rp 0</p>
+            </div>
+            <div class="budget-overview-card">
+              <p class="label">Sisa Budget</p>
+              <p class="value" id="budgetRemaining">Rp 0</p>
+            </div>
+          </div>
+          <div class="progress-wrap">
+            <div class="progress-labels">
+              <span>Penggunaan Budget</span
+              ><span id="budgetProgressText">0%</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill" id="budgetProgressFill"></div>
+            </div>
+          </div>
+          <div id="budgetList" class="budget-list"></div>
+        </section>
+
+        <!-- ============ PAGE: PACKING LIST ============ -->
+        <section class="page" id="page-packing">
+          <div class="page-header">
+            <h2>Packing List</h2>
+            <button class="btn btn-primary" id="btnAddPacking">
+              + Tambah Barang
+            </button>
+          </div>
+          <div class="progress-wrap">
+            <div class="progress-labels">
+              <span>Progress Packing</span
+              ><span id="packingProgressText">0%</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill green" id="packingProgressFill"></div>
+            </div>
+          </div>
+          <div id="packingList" class="packing-list"></div>
+        </section>
+
+        <!-- ============ PAGE: NOTES ============ -->
+        <section class="page" id="page-notes">
+          <div class="page-header">
+            <h2>Catatan Perjalanan</h2>
+            <button class="btn btn-primary" id="btnAddNote">
+              + Catatan Baru
+            </button>
+          </div>
+          <div id="notesGrid" class="notes-grid"></div>
+        </section>
+
+        <!-- ============ PAGE: PROFILE ============ -->
+        <section class="page" id="page-profile">
+          <div class="page-header"><h2>Profil Saya</h2></div>
+          <div class="profile-card">
+            <div class="avatar-circle large" id="profileAvatar">T</div>
+            <div class="profile-info">
+              <p class="profile-name" id="profileName">Nama Pengguna</p>
+              <p class="profile-detail">
+                <b>Email:</b> <span id="profileEmail">-</span>
+              </p>
+              <p class="profile-detail">
+                <b>No. HP:</b> <span id="profilePhone">-</span>
+              </p>
+              <p class="profile-detail">
+                <b>Alamat:</b> <span id="profileAddress">-</span>
+              </p>
+            </div>
+            <button class="btn btn-secondary" id="btnEditProfile">
+              Edit Profil
+            </button>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- ======================= MODALS ======================= -->
+
+    <!-- Modal: New Trip -->
+    <div class="modal-overlay hidden" id="modalTrip">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>Buat Perjalanan Baru</h3>
+          <button class="modal-close" data-close="modalTrip">✕</button>
+        </div>
+        <form id="formTrip">
+          <div class="form-group">
+            <label>Nama Trip</label
+            ><input
+              type="text"
+              id="tripName"
+              required
+              placeholder="cth. Liburan ke Bali"
+            />
+          </div>
+          <div class="form-group">
+            <label>Destinasi</label
+            ><input
+              type="text"
+              id="tripDestination"
+              required
+              placeholder="cth. Bali, Indonesia"
+            />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Tanggal Mulai</label
+              ><input type="date" id="tripStart" required />
+            </div>
+            <div class="form-group">
+              <label>Tanggal Selesai</label
+              ><input type="date" id="tripEnd" required />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Budget (Rp)</label
+            ><input
+              type="number"
+              id="tripBudget"
+              required
+              placeholder="cth. 5000000"
+            />
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">
+            Simpan Trip
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal: Itinerary Item -->
+    <div class="modal-overlay hidden" id="modalItinerary">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>Tambah Aktivitas</h3>
+          <button class="modal-close" data-close="modalItinerary">✕</button>
+        </div>
+        <form id="formItinerary">
+          <div class="form-group">
+            <label>Waktu</label><input type="time" id="itnTime" required />
+          </div>
+          <div class="form-group">
+            <label>Aktivitas</label
+            ><input
+              type="text"
+              id="itnActivity"
+              required
+              placeholder="cth. Sarapan di hotel"
+            />
+          </div>
+          <div class="form-group">
+            <label>Lokasi</label
+            ><input
+              type="text"
+              id="itnLocation"
+              placeholder="cth. Hotel Aston"
+            />
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">
+            Tambah
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal: Budget Entry -->
+    <div class="modal-overlay hidden" id="modalBudget">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>Catat Pengeluaran</h3>
+          <button class="modal-close" data-close="modalBudget">✕</button>
+        </div>
+        <form id="formBudget">
+          <div class="form-group">
+            <label>Kategori</label>
+            <select id="budgetCategory" required>
+              <option value="Transportasi">Transportasi</option>
+              <option value="Hotel">Hotel</option>
+              <option value="Makanan">Makanan</option>
+              <option value="Tiket">Tiket</option>
+              <option value="Shopping">Shopping</option>
+              <option value="Lainnya">Lainnya</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Nominal (Rp)</label
+            ><input
+              type="number"
+              id="budgetNominal"
+              required
+              placeholder="cth. 150000"
+            />
+          </div>
+          <div class="form-group">
+            <label>Keterangan</label
+            ><input
+              type="text"
+              id="budgetNote"
+              placeholder="cth. Taksi bandara"
+            />
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">
+            Simpan
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal: Packing Item -->
+    <div class="modal-overlay hidden" id="modalPacking">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>Tambah Barang Bawaan</h3>
+          <button class="modal-close" data-close="modalPacking">✕</button>
+        </div>
+        <form id="formPacking">
+          <div class="form-group">
+            <label>Nama Barang</label
+            ><input
+              type="text"
+              id="packingItemName"
+              required
+              placeholder="cth. Charger"
+            />
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">
+            Tambah
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal: Note -->
+    <div class="modal-overlay hidden" id="modalNote">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>Catatan Baru</h3>
+          <button class="modal-close" data-close="modalNote">✕</button>
+        </div>
+        <form id="formNote">
+          <div class="form-group">
+            <label>Judul</label
+            ><input
+              type="text"
+              id="noteTitle"
+              required
+              placeholder="cth. Ide kegiatan hari ke-2"
+            />
+          </div>
+          <div class="form-group">
+            <label>Isi Catatan</label
+            ><textarea
+              id="noteContent"
+              rows="4"
+              required
+              placeholder="Tulis catatanmu di sini..."
+            ></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">
+            Simpan Catatan
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal: Edit Profile -->
+    <div class="modal-overlay hidden" id="modalEditProfile">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>Edit Profil</h3>
+          <button class="modal-close" data-close="modalEditProfile">✕</button>
+        </div>
+        <form id="formEditProfile">
+          <div class="form-group">
+            <label>Nama Lengkap</label
+            ><input type="text" id="editName" required />
+          </div>
+          <div class="form-group">
+            <label>Email</label><input type="email" id="editEmail" required />
+          </div>
+          <div class="form-group">
+            <label>Nomor HP</label><input type="tel" id="editPhone" required />
+          </div>
+          <div class="form-group">
+            <label>Alamat Lengkap</label
+            ><textarea id="editAddress" rows="2" required></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">
+            Simpan Perubahan
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal: Pilih Trip (untuk "Tambahkan ke Trip" dari halaman Tempat Sekitar) -->
+    <div class="modal-overlay hidden" id="modalChooseTrip">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>Tambahkan ke Trip</h3>
+          <button class="modal-close" data-close="modalChooseTrip">✕</button>
+        </div>
+        <div class="form-group">
+          <label>Pilih Trip</label>
+          <select id="chooseTripSelect"></select>
+        </div>
+        <div class="form-group">
+          <label>Waktu (opsional)</label
+          ><input type="time" id="chooseTripTime" />
+        </div>
+        <button class="btn btn-primary btn-block" id="btnConfirmAddToTrip">
+          Tambahkan ke Itinerary
+        </button>
+      </div>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
+xxxx
