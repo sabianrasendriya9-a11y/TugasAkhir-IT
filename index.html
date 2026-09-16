@@ -341,6 +341,9 @@
               Aktifkan lokasi untuk menemukan tempat menarik di sekitarmu.
             </p>
           </div>
+          <div class="places-filter-row">
+            <select id="placesCitySelect" class="select-input"></select>
+          </div>
           <div class="places-filter" id="placesFilter">
             <button class="chip active" data-filter="all">Semua</button>
             <button class="chip" data-filter="wisata">Wisata</button>
@@ -359,9 +362,10 @@
               margin: -10px 0 16px;
             "
           >
-            📌 Menampilkan data kurasi tempat di Kota Probolinggo, digabung
-            dengan tempat sekitar dari OpenStreetMap saat lokasi aktif.
-            Koordinat tempat kurasi bersifat perkiraan.
+            📌 Menampilkan data kurasi tempat per kota, digabung dengan tempat
+            sekitar dari OpenStreetMap saat lokasi aktif. Koordinat tempat
+            kurasi bersifat perkiraan. Tombol "Lihat Peta" akan membuka Google
+            Maps.
           </p>
           <div id="placesGrid" class="places-grid"></div>
         </section>
@@ -698,4 +702,3 @@
     <script src="script.js"></script>
   </body>
 </html>
-xxxx

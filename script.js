@@ -557,6 +557,7 @@ function renderItinerary() {
    ============================================================= */
 let currentPlaces = [];
 let currentPlaceFilter = "all";
+let currentCityFilter = "all";
 let pendingPlaceForTrip = null;
 
 // Kategori tempat terpadu — dipakai baik untuk hasil Overpass API maupun data kurasi Kota Probolinggo
@@ -572,310 +573,556 @@ const CATEGORY_INFO = {
 };
 
 /*
- * DATA KURASI: TEMPAT-TEMPAT DI KOTA PROBOLINGGO
- * Sumber: rangkuman informasi publik (Dispopar Kota Probolinggo & referensi lokal).
- * Catatan: koordinat (lat/lon) bersifat PERKIRAAN berdasarkan area/alamat yang diketahui,
- * disarankan untuk diverifikasi ulang lewat Google Maps sebelum dipakai secara presisi.
+ * DATA KURASI TEMPAT PER KOTA
+ * - Kota Probolinggo: rangkuman informasi publik (Dispopar Kota Probolinggo & referensi lokal), cukup detail
+ *   hingga tingkat cafe/kuliner/hotel per jalan.
+ * - Kota-kota lain: berisi landmark/tempat paling terkenal sebagai titik awal, belum sedetail Probolinggo.
+ * Catatan: seluruh koordinat (lat/lon) bersifat PERKIRAAN, disarankan diverifikasi ulang lewat Google Maps
+ * sebelum dipakai secara presisi.
  */
-const PROBOLINGGO_PLACES = [
-  // ---------- Wisata & tempat rekreasi ----------
-  {
-    name: "BEE JAY BAKAU RESORT (BJBR)",
-    category: "wisata",
-    address: "Kawasan Pelabuhan PPP, Mayangan",
-    lat: -7.728,
-    lon: 113.234,
-    description: "Wisata mangrove/bakau di kawasan pelabuhan.",
-  },
-  {
-    name: "Taman Wisata Study Lingkungan",
-    category: "wisata",
-    address: "Mayangan, Kota Probolinggo",
-    lat: -7.73,
-    lon: 113.23,
-    description: "Wisata edukasi lingkungan.",
-  },
-  {
-    name: "Gembok Cinta BJBR",
-    category: "wisata",
-    address: "Kawasan BJBR, Mayangan",
-    lat: -7.7282,
-    lon: 113.2342,
-    description: "Spot foto populer di kawasan BJBR.",
-  },
-  {
-    name: "Bundaran GLASER (Gladak Serang)",
-    category: "wisata",
-    address: "Pusat Kota Probolinggo",
-    lat: -7.75,
-    lon: 113.213,
-    description: "Area publik dan tempat bersantai.",
-  },
-  {
-    name: "Alun-Alun Probolinggo",
-    category: "wisata",
-    address: "Jl. Suroyo, Pusat Kota Probolinggo",
-    lat: -7.7546,
-    lon: 113.2159,
-    description: "Ruang publik di pusat kota.",
-  },
-  {
-    name: "Taman Maramis",
-    category: "wisata",
-    address: "Pusat Kota Probolinggo",
-    lat: -7.753,
-    lon: 113.2145,
-    description: "Taman kota untuk berbagai kegiatan dan event.",
-  },
-  {
-    name: "Museum Probolinggo",
-    category: "budaya",
-    address: "Pusat Kota Probolinggo",
-    lat: -7.755,
-    lon: 113.217,
-    description: "Wisata sejarah dan budaya.",
-  },
-  {
-    name: "Museum Dr. Moh. Saleh",
-    category: "budaya",
-    address: "Jl. Dr. Moch Saleh, Kota Probolinggo",
-    lat: -7.7555,
-    lon: 113.2175,
-    description: "Museum wisata sejarah.",
-  },
-  {
-    name: "Klenteng Tri Dharma",
-    category: "budaya",
-    address: "Kawasan Pecinan, Kota Probolinggo",
-    lat: -7.74,
-    lon: 113.22,
-    description: "Wisata religi dan budaya Tionghoa.",
-  },
-  {
-    name: "Gereja Merah",
-    category: "budaya",
-    address: "Kawasan Pusat Kota Probolinggo",
-    lat: -7.738,
-    lon: 113.223,
-    description: "Bangunan gereja bersejarah.",
+const CURATED_CITIES = {
+  "Kota Probolinggo": {
+    center: { lat: -7.7546, lon: 113.2159 },
+    places: [
+      // ---------- Wisata & tempat rekreasi ----------
+      {
+        name: "BEE JAY BAKAU RESORT (BJBR)",
+        category: "wisata",
+        address: "Kawasan Pelabuhan PPP, Mayangan",
+        lat: -7.728,
+        lon: 113.234,
+        description: "Wisata mangrove/bakau di kawasan pelabuhan.",
+      },
+      {
+        name: "Taman Wisata Study Lingkungan",
+        category: "wisata",
+        address: "Mayangan, Kota Probolinggo",
+        lat: -7.73,
+        lon: 113.23,
+        description: "Wisata edukasi lingkungan.",
+      },
+      {
+        name: "Gembok Cinta BJBR",
+        category: "wisata",
+        address: "Kawasan BJBR, Mayangan",
+        lat: -7.7282,
+        lon: 113.2342,
+        description: "Spot foto populer di kawasan BJBR.",
+      },
+      {
+        name: "Bundaran GLASER (Gladak Serang)",
+        category: "wisata",
+        address: "Pusat Kota Probolinggo",
+        lat: -7.75,
+        lon: 113.213,
+        description: "Area publik dan tempat bersantai.",
+      },
+      {
+        name: "Alun-Alun Probolinggo",
+        category: "wisata",
+        address: "Jl. Suroyo, Pusat Kota Probolinggo",
+        lat: -7.7546,
+        lon: 113.2159,
+        description: "Ruang publik di pusat kota.",
+      },
+      {
+        name: "Taman Maramis",
+        category: "wisata",
+        address: "Pusat Kota Probolinggo",
+        lat: -7.753,
+        lon: 113.2145,
+        description: "Taman kota untuk berbagai kegiatan dan event.",
+      },
+      {
+        name: "Museum Probolinggo",
+        category: "budaya",
+        address: "Pusat Kota Probolinggo",
+        lat: -7.755,
+        lon: 113.217,
+        description: "Wisata sejarah dan budaya.",
+      },
+      {
+        name: "Museum Dr. Moh. Saleh",
+        category: "budaya",
+        address: "Jl. Dr. Moch Saleh, Kota Probolinggo",
+        lat: -7.7555,
+        lon: 113.2175,
+        description: "Museum wisata sejarah.",
+      },
+      {
+        name: "Klenteng Tri Dharma",
+        category: "budaya",
+        address: "Kawasan Pecinan, Kota Probolinggo",
+        lat: -7.74,
+        lon: 113.22,
+        description: "Wisata religi dan budaya Tionghoa.",
+      },
+      {
+        name: "Gereja Merah",
+        category: "budaya",
+        address: "Kawasan Pusat Kota Probolinggo",
+        lat: -7.738,
+        lon: 113.223,
+        description: "Bangunan gereja bersejarah.",
+      },
+      // ---------- Cafe & tempat nongkrong ----------
+      {
+        name: "BARREL Coffee Garage",
+        category: "cafe",
+        address: "Jl. Mt. Haryono, Kota Probolinggo",
+        lat: -7.757,
+        lon: 113.219,
+      },
+      {
+        name: "Daily Dose Coffee",
+        category: "cafe",
+        address: "Jl. D.I. Panjaitan, Kota Probolinggo",
+        lat: -7.76,
+        lon: 113.214,
+      },
+      {
+        name: "Simposium Coffee (Headquarter)",
+        category: "cafe",
+        address: "Jl. Dr. Moch Saleh, Kota Probolinggo",
+        lat: -7.7555,
+        lon: 113.2178,
+      },
+      {
+        name: "ALIBI CAFE",
+        category: "cafe",
+        address: "Jl. R.A. Kartini, Kota Probolinggo",
+        lat: -7.753,
+        lon: 113.21,
+      },
+      {
+        name: "Mak Jleb Coffee & Kedai",
+        category: "cafe",
+        address: "Kanigaran, Kota Probolinggo",
+        lat: -7.748,
+        lon: 113.223,
+      },
+      {
+        name: "Putri Lingga Coffee & Micro Roastery",
+        category: "cafe",
+        address: "Kademangan, Kota Probolinggo",
+        lat: -7.765,
+        lon: 113.205,
+      },
+      {
+        name: "Altruist Coffee",
+        category: "cafe",
+        address: "Kawasan Mastrip, Kota Probolinggo",
+        lat: -7.762,
+        lon: 113.226,
+      },
+      {
+        name: "RUMAH NENEK Coffee Shop",
+        category: "cafe",
+        address: "Kota Probolinggo",
+        lat: -7.756,
+        lon: 113.22,
+      },
+      {
+        name: "Kedai27 Probolinggo",
+        category: "cafe",
+        address: "Kota Probolinggo",
+        lat: -7.754,
+        lon: 113.218,
+      },
+      // ---------- Kuliner ----------
+      {
+        name: "Bakso Probolinggo",
+        category: "kuliner",
+        address: "Kota Probolinggo",
+        lat: -7.755,
+        lon: 113.216,
+      },
+      {
+        name: "Kupang Lontong Pahlawan",
+        category: "kuliner",
+        address: "Jl. Pahlawan, Kota Probolinggo",
+        lat: -7.75,
+        lon: 113.219,
+      },
+      {
+        name: "Rawon Gunawan",
+        category: "kuliner",
+        address: "Kota Probolinggo",
+        lat: -7.756,
+        lon: 113.215,
+      },
+      {
+        name: "Ikan Bakar Gatsu",
+        category: "kuliner",
+        address: "Jl. Gatot Subroto, Kota Probolinggo",
+        lat: -7.748,
+        lon: 113.228,
+      },
+      {
+        name: "Nasi Pecel Pocong",
+        category: "kuliner",
+        address: "Kota Probolinggo",
+        lat: -7.757,
+        lon: 113.213,
+      },
+      {
+        name: "Soto Ayam Pak Madjar",
+        category: "kuliner",
+        address: "Kota Probolinggo",
+        lat: -7.754,
+        lon: 113.22,
+      },
+      {
+        name: "Bebek Goreng Bu Lely",
+        category: "kuliner",
+        address: "Kota Probolinggo",
+        lat: -7.759,
+        lon: 113.217,
+      },
+      {
+        name: "Tahu Kikil Brak",
+        category: "kuliner",
+        address: "Kota Probolinggo",
+        lat: -7.752,
+        lon: 113.214,
+      },
+      {
+        name: "Mie Jawa Guntur",
+        category: "kuliner",
+        address: "Kota Probolinggo",
+        lat: -7.7555,
+        lon: 113.219,
+      },
+      {
+        name: "Rumah Makan Sari Laut SJDW",
+        category: "kuliner",
+        address: "Kawasan Pesisir, Kota Probolinggo",
+        lat: -7.746,
+        lon: 113.226,
+      },
+      // ---------- Hotel / penginapan ----------
+      {
+        name: "Bromo Park Hotel",
+        category: "hotel",
+        address: "Kota Probolinggo",
+        lat: -7.754,
+        lon: 113.2175,
+      },
+      {
+        name: "Bromo View Hotel",
+        category: "hotel",
+        address: "Kota Probolinggo",
+        lat: -7.756,
+        lon: 113.2185,
+      },
+      {
+        name: "Paseban Sena (Ballroom, Hotel & Restaurant)",
+        category: "hotel",
+        address: "Kota Probolinggo",
+        lat: -7.75,
+        lon: 113.21,
+      },
+      {
+        name: "Caldera Park Homestay",
+        category: "hotel",
+        address: "Kota Probolinggo",
+        lat: -7.76,
+        lon: 113.22,
+      },
+      {
+        name: "RedDoorz @ Hotel Tampiarto",
+        category: "hotel",
+        address: "Kota Probolinggo, Jawa Timur",
+        lat: -7.757,
+        lon: 113.216,
+      },
+      // ---------- Tempat penting ----------
+      {
+        name: "Stasiun Probolinggo",
+        category: "penting",
+        address: "Kota Probolinggo",
+        lat: -7.7561,
+        lon: 113.2166,
+        description: "Stasiun kereta api.",
+      },
+      {
+        name: "Terminal Bayuangga",
+        category: "penting",
+        address: "Kota Probolinggo",
+        lat: -7.7386,
+        lon: 113.1935,
+        description: "Terminal bus utama.",
+      },
+      {
+        name: "Pelabuhan Tanjung Tembaga",
+        category: "penting",
+        address: "Mayangan, Kota Probolinggo",
+        lat: -7.728,
+        lon: 113.238,
+        description: "Pelabuhan utama Kota Probolinggo.",
+      },
+      {
+        name: "Pelabuhan Perikanan Pantai Mayangan",
+        category: "penting",
+        address: "Mayangan, Kota Probolinggo",
+        lat: -7.729,
+        lon: 113.232,
+        description: "Pelabuhan perikanan.",
+      },
+      {
+        name: "GOR Ahmad Yani",
+        category: "penting",
+        address: "Kota Probolinggo",
+        lat: -7.762,
+        lon: 113.214,
+        description: "Gedung olahraga.",
+      },
+    ],
   },
 
-  // ---------- Cafe & tempat nongkrong ----------
-  {
-    name: "BARREL Coffee Garage",
-    category: "cafe",
-    address: "Jl. Mt. Haryono, Kota Probolinggo",
-    lat: -7.757,
-    lon: 113.219,
-  },
-  {
-    name: "Daily Dose Coffee",
-    category: "cafe",
-    address: "Jl. D.I. Panjaitan, Kota Probolinggo",
-    lat: -7.76,
-    lon: 113.214,
-  },
-  {
-    name: "Simposium Coffee (Headquarter)",
-    category: "cafe",
-    address: "Jl. Dr. Moch Saleh, Kota Probolinggo",
-    lat: -7.7555,
-    lon: 113.2178,
-  },
-  {
-    name: "ALIBI CAFE",
-    category: "cafe",
-    address: "Jl. R.A. Kartini, Kota Probolinggo",
-    lat: -7.753,
-    lon: 113.21,
-  },
-  {
-    name: "Mak Jleb Coffee & Kedai",
-    category: "cafe",
-    address: "Kanigaran, Kota Probolinggo",
-    lat: -7.748,
-    lon: 113.223,
-  },
-  {
-    name: "Putri Lingga Coffee & Micro Roastery",
-    category: "cafe",
-    address: "Kademangan, Kota Probolinggo",
-    lat: -7.765,
-    lon: 113.205,
-  },
-  {
-    name: "Altruist Coffee",
-    category: "cafe",
-    address: "Kawasan Mastrip, Kota Probolinggo",
-    lat: -7.762,
-    lon: 113.226,
-  },
-  {
-    name: "RUMAH NENEK Coffee Shop",
-    category: "cafe",
-    address: "Kota Probolinggo",
-    lat: -7.756,
-    lon: 113.22,
-  },
-  {
-    name: "Kedai27 Probolinggo",
-    category: "cafe",
-    address: "Kota Probolinggo",
-    lat: -7.754,
-    lon: 113.218,
+  Surabaya: {
+    center: { lat: -7.2575, lon: 112.7521 },
+    places: [
+      {
+        name: "Tugu Pahlawan",
+        category: "budaya",
+        address: "Jl. Pahlawan, Surabaya",
+        lat: -7.245808,
+        lon: 112.737785,
+        description: "Monumen ikon Kota Surabaya beserta Museum 10 Nopember.",
+      },
+      {
+        name: "House of Sampoerna",
+        category: "budaya",
+        address: "Surabaya",
+        lat: -7.2323,
+        lon: 112.7376,
+        description: "Museum sejarah kretek Sampoerna di kawasan kota tua.",
+      },
+      {
+        name: "Tunjungan Plaza",
+        category: "mall",
+        address: "Jl. Basuki Rahmat, Surabaya",
+        lat: -7.2624,
+        lon: 112.7396,
+      },
+      {
+        name: "Kebun Binatang Surabaya",
+        category: "wisata",
+        address: "Surabaya",
+        lat: -7.2917,
+        lon: 112.7379,
+      },
+      {
+        name: "Jembatan Suramadu",
+        category: "wisata",
+        address: "Surabaya",
+        lat: -7.1725,
+        lon: 112.7614,
+        description: "Jembatan penghubung Surabaya–Madura.",
+      },
+      {
+        name: "Masjid Al Akbar Surabaya",
+        category: "budaya",
+        address: "Surabaya",
+        lat: -7.3327,
+        lon: 112.7166,
+      },
+      {
+        name: "Hotel Majapahit",
+        category: "hotel",
+        address: "Jl. Tunjungan, Surabaya",
+        lat: -7.2637,
+        lon: 112.7396,
+        description: "Hotel bersejarah peninggalan kolonial.",
+      },
+    ],
   },
 
-  // ---------- Kuliner ----------
-  {
-    name: "Bakso Probolinggo",
-    category: "kuliner",
-    address: "Kota Probolinggo",
-    lat: -7.755,
-    lon: 113.216,
-  },
-  {
-    name: "Kupang Lontong Pahlawan",
-    category: "kuliner",
-    address: "Jl. Pahlawan, Kota Probolinggo",
-    lat: -7.75,
-    lon: 113.219,
-  },
-  {
-    name: "Rawon Gunawan",
-    category: "kuliner",
-    address: "Kota Probolinggo",
-    lat: -7.756,
-    lon: 113.215,
-  },
-  {
-    name: "Ikan Bakar Gatsu",
-    category: "kuliner",
-    address: "Jl. Gatot Subroto, Kota Probolinggo",
-    lat: -7.748,
-    lon: 113.228,
-  },
-  {
-    name: "Nasi Pecel Pocong",
-    category: "kuliner",
-    address: "Kota Probolinggo",
-    lat: -7.757,
-    lon: 113.213,
-  },
-  {
-    name: "Soto Ayam Pak Madjar",
-    category: "kuliner",
-    address: "Kota Probolinggo",
-    lat: -7.754,
-    lon: 113.22,
-  },
-  {
-    name: "Bebek Goreng Bu Lely",
-    category: "kuliner",
-    address: "Kota Probolinggo",
-    lat: -7.759,
-    lon: 113.217,
-  },
-  {
-    name: "Tahu Kikil Brak",
-    category: "kuliner",
-    address: "Kota Probolinggo",
-    lat: -7.752,
-    lon: 113.214,
-  },
-  {
-    name: "Mie Jawa Guntur",
-    category: "kuliner",
-    address: "Kota Probolinggo",
-    lat: -7.7555,
-    lon: 113.219,
-  },
-  {
-    name: "Rumah Makan Sari Laut SJDW",
-    category: "kuliner",
-    address: "Kawasan Pesisir, Kota Probolinggo",
-    lat: -7.746,
-    lon: 113.226,
+  Malang: {
+    center: { lat: -7.9797, lon: 112.6304 },
+    places: [
+      {
+        name: "Alun-Alun Kota Malang",
+        category: "wisata",
+        address: "Malang",
+        lat: -7.9797,
+        lon: 112.6304,
+      },
+      {
+        name: "Jatim Park 1",
+        category: "wisata",
+        address: "Batu, Malang",
+        lat: -7.8817,
+        lon: 112.5194,
+      },
+      {
+        name: "Museum Angkut",
+        category: "wisata",
+        address: "Batu, Malang",
+        lat: -7.8802,
+        lon: 112.5133,
+      },
+      {
+        name: "Kampung Warna Warni Jodipan",
+        category: "wisata",
+        address: "Malang",
+        lat: -7.9847,
+        lon: 112.6255,
+        description: "Kampung tematik penuh warna.",
+      },
+      {
+        name: "Malang Town Square (MATOS)",
+        category: "mall",
+        address: "Malang",
+        lat: -7.9575,
+        lon: 112.6172,
+      },
+    ],
   },
 
-  // ---------- Hotel / penginapan ----------
-  {
-    name: "Bromo Park Hotel",
-    category: "hotel",
-    address: "Kota Probolinggo",
-    lat: -7.754,
-    lon: 113.2175,
-  },
-  {
-    name: "Bromo View Hotel",
-    category: "hotel",
-    address: "Kota Probolinggo",
-    lat: -7.756,
-    lon: 113.2185,
-  },
-  {
-    name: "Paseban Sena (Ballroom, Hotel & Restaurant)",
-    category: "hotel",
-    address: "Kota Probolinggo",
-    lat: -7.75,
-    lon: 113.21,
-  },
-  {
-    name: "Caldera Park Homestay",
-    category: "hotel",
-    address: "Kota Probolinggo",
-    lat: -7.76,
-    lon: 113.22,
-  },
-  {
-    name: "RedDoorz @ Hotel Tampiarto",
-    category: "hotel",
-    address: "Kota Probolinggo, Jawa Timur",
-    lat: -7.757,
-    lon: 113.216,
+  Yogyakarta: {
+    center: { lat: -7.7956, lon: 110.3695 },
+    places: [
+      {
+        name: "Malioboro",
+        category: "wisata",
+        address: "Yogyakarta",
+        lat: -7.793,
+        lon: 110.3658,
+        description: "Kawasan jalan wisata dan belanja legendaris.",
+      },
+      {
+        name: "Keraton Yogyakarta",
+        category: "budaya",
+        address: "Yogyakarta",
+        lat: -7.8053,
+        lon: 110.3642,
+      },
+      {
+        name: "Candi Prambanan",
+        category: "wisata",
+        address: "Yogyakarta",
+        lat: -7.752,
+        lon: 110.4915,
+        description: "Kompleks candi Hindu terbesar di Indonesia.",
+      },
+      {
+        name: "Taman Sari",
+        category: "budaya",
+        address: "Yogyakarta",
+        lat: -7.81,
+        lon: 110.3594,
+        description: "Bekas taman air Keraton Yogyakarta.",
+      },
+      {
+        name: "Tugu Yogyakarta",
+        category: "wisata",
+        address: "Yogyakarta",
+        lat: -7.7828,
+        lon: 110.3671,
+      },
+    ],
   },
 
-  // ---------- Tempat penting ----------
-  {
-    name: "Stasiun Probolinggo",
-    category: "penting",
-    address: "Kota Probolinggo",
-    lat: -7.7561,
-    lon: 113.2166,
-    description: "Stasiun kereta api.",
+  Bandung: {
+    center: { lat: -6.9175, lon: 107.6191 },
+    places: [
+      {
+        name: "Gedung Sate",
+        category: "budaya",
+        address: "Bandung",
+        lat: -6.9022,
+        lon: 107.6186,
+        description: "Ikon bangunan bersejarah Kota Bandung.",
+      },
+      {
+        name: "Jalan Braga",
+        category: "wisata",
+        address: "Bandung",
+        lat: -6.9184,
+        lon: 107.6098,
+        description: "Kawasan bersejarah dengan arsitektur kolonial.",
+      },
+      {
+        name: "Kawah Putih",
+        category: "wisata",
+        address: "Ciwidey, Bandung",
+        lat: -7.1663,
+        lon: 107.4022,
+      },
+      {
+        name: "Trans Studio Bandung",
+        category: "wisata",
+        address: "Bandung",
+        lat: -6.9254,
+        lon: 107.6382,
+      },
+      {
+        name: "Paris Van Java Mall",
+        category: "mall",
+        address: "Bandung",
+        lat: -6.8926,
+        lon: 107.5885,
+      },
+    ],
   },
-  {
-    name: "Terminal Bayuangga",
-    category: "penting",
-    address: "Kota Probolinggo",
-    lat: -7.7386,
-    lon: 113.1935,
-    description: "Terminal bus utama.",
+
+  Jakarta: {
+    center: { lat: -6.2088, lon: 106.8456 },
+    places: [
+      {
+        name: "Monumen Nasional (Monas)",
+        category: "wisata",
+        address: "Jakarta Pusat",
+        lat: -6.1754,
+        lon: 106.8272,
+        description: "Ikon utama Kota Jakarta.",
+      },
+      {
+        name: "Kota Tua Jakarta",
+        category: "budaya",
+        address: "Jakarta Barat",
+        lat: -6.1352,
+        lon: 106.8133,
+        description: "Kawasan bersejarah peninggalan Batavia.",
+      },
+      {
+        name: "Ancol Dreamland",
+        category: "wisata",
+        address: "Jakarta Utara",
+        lat: -6.1256,
+        lon: 106.8317,
+      },
+      {
+        name: "Grand Indonesia Mall",
+        category: "mall",
+        address: "Jakarta Pusat",
+        lat: -6.1954,
+        lon: 106.8206,
+      },
+      {
+        name: "Masjid Istiqlal",
+        category: "budaya",
+        address: "Jakarta Pusat",
+        lat: -6.1702,
+        lon: 106.8307,
+        description: "Masjid nasional terbesar di Asia Tenggara.",
+      },
+    ],
   },
-  {
-    name: "Pelabuhan Tanjung Tembaga",
-    category: "penting",
-    address: "Mayangan, Kota Probolinggo",
-    lat: -7.728,
-    lon: 113.238,
-    description: "Pelabuhan utama Kota Probolinggo.",
-  },
-  {
-    name: "Pelabuhan Perikanan Pantai Mayangan",
-    category: "penting",
-    address: "Mayangan, Kota Probolinggo",
-    lat: -7.729,
-    lon: 113.232,
-    description: "Pelabuhan perikanan.",
-  },
-  {
-    name: "GOR Ahmad Yani",
-    category: "penting",
-    address: "Kota Probolinggo",
-    lat: -7.762,
-    lon: 113.214,
-    description: "Gedung olahraga.",
-  },
-].map((p) => ({ id: "probolinggo-" + uid(), source: "curated", ...p }));
+};
+
+// Ratakan seluruh data kurasi kota menjadi satu array, masing-masing tempat diberi label kota asalnya
+const ALL_CURATED_PLACES = Object.entries(CURATED_CITIES).flatMap(
+  ([cityName, cityData]) =>
+    cityData.places.map((p) => ({
+      id: "curated-" + uid(),
+      source: "curated",
+      city: cityName,
+      ...p,
+    })),
+);
 
 // Batas koordinat wilayah Indonesia (bounding box, dengan sedikit toleransi)
 // Lintang: -11.5 (selatan, Pulau Rote) s.d. 6.5 (utara, Pulau Weh)
@@ -962,9 +1209,9 @@ function renderPlacesStatus() {
   `;
 }
 
-// Tampilkan data kurasi Kota Probolinggo secara default (tanpa perlu deteksi lokasi dulu)
+// Tampilkan data kurasi kota (semua kota atau kota terpilih) secara default, tanpa perlu deteksi lokasi dulu
 function renderCuratedPlacesDefault() {
-  currentPlaces = PROBOLINGGO_PLACES.map((p) => ({ ...p, distance: null }));
+  currentPlaces = ALL_CURATED_PLACES.map((p) => ({ ...p, distance: null }));
   renderPlacesGrid();
 }
 
@@ -973,8 +1220,8 @@ async function fetchNearbyPlaces(lat, lon) {
   grid.innerHTML =
     '<p class="empty-text">🔎 Mencari tempat menarik di sekitarmu...</p>';
 
-  // Data kurasi Kota Probolinggo selalu disertakan (dengan jarak dari lokasi pengguna)
-  const curatedWithDistance = PROBOLINGGO_PLACES.map((p) => ({
+  // Data kurasi seluruh kota selalu disertakan (dengan jarak dari lokasi pengguna)
+  const curatedWithDistance = ALL_CURATED_PLACES.map((p) => ({
     ...p,
     distance: haversineDistance(lat, lon, p.lat, p.lon),
   }));
@@ -1042,16 +1289,23 @@ async function fetchNearbyPlaces(lat, lon) {
 function renderPlacesGrid() {
   const grid = document.getElementById("placesGrid");
   grid.innerHTML = "";
-  const filtered =
-    currentPlaceFilter === "all"
-      ? currentPlaces
-      : currentPlaces.filter(
-          (p) => CATEGORY_INFO[p.category].filter === currentPlaceFilter,
-        );
+
+  let filtered = currentPlaces;
+  if (currentPlaceFilter !== "all") {
+    filtered = filtered.filter(
+      (p) => CATEGORY_INFO[p.category].filter === currentPlaceFilter,
+    );
+  }
+  if (currentCityFilter !== "all") {
+    // Filter kota hanya berlaku untuk data kurasi; hasil live dari OpenStreetMap tetap ditampilkan
+    filtered = filtered.filter(
+      (p) => p.source !== "curated" || p.city === currentCityFilter,
+    );
+  }
 
   if (filtered.length === 0) {
     grid.innerHTML =
-      '<p class="empty-text">Tidak ada tempat ditemukan untuk kategori ini.</p>';
+      '<p class="empty-text">Tidak ada tempat ditemukan untuk kategori/kota ini.</p>';
     return;
   }
 
@@ -1061,27 +1315,26 @@ function renderPlacesGrid() {
     const distanceOrAddress =
       place.distance !== null && place.distance !== undefined
         ? `📏 ${formatDistance(place.distance)} dari lokasimu`
-        : `📍 ${escapeHtml(place.address || "Kota Probolinggo")}`;
+        : `📍 ${escapeHtml(place.address || place.city || "-")}`;
 
     const card = document.createElement("div");
     card.className = "place-card fade-in";
     card.innerHTML = `
       <div class="place-card-icon">${info.icon}</div>
       <p class="place-card-name">${escapeHtml(place.name)}</p>
-      <p class="place-card-type">${info.label}${isCurated ? " · Kota Probolinggo" : ""}</p>
+      <p class="place-card-type">${info.label}${isCurated ? " · " + escapeHtml(place.city) : ""}</p>
       <p class="place-card-dist">${distanceOrAddress}</p>
       <div class="place-card-actions">
-        <button class="btn btn-secondary btn-sm" data-action="view-map">🗺️ Lihat Peta</button>
+        <button class="btn btn-secondary btn-sm" data-action="view-map">🗺️ Lihat di Google Maps</button>
         <button class="btn btn-primary btn-sm" data-action="add-trip">+ Trip</button>
       </div>
     `;
+    // Tombol "Lihat Peta" otomatis membuka Google Maps pada koordinat tempat tersebut
     card
       .querySelector('[data-action="view-map"]')
       .addEventListener("click", () => {
-        window.open(
-          `https://www.openstreetmap.org/?mlat=${place.lat}&mlon=${place.lon}#map=18/${place.lat}/${place.lon}`,
-          "_blank",
-        );
+        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lon}`;
+        window.open(mapsUrl, "_blank");
       });
     card
       .querySelector('[data-action="add-trip"]')
@@ -1459,6 +1712,19 @@ document.addEventListener("DOMContentLoaded", () => {
     .getElementById("btnDetectLocationPlaces")
     .addEventListener("click", detectLocation);
   renderPlacesStatus();
+
+  // Isi dropdown pilihan kota (Semua Kota + tiap kota yang ada di data kurasi)
+  const citySelect = document.getElementById("placesCitySelect");
+  citySelect.innerHTML =
+    '<option value="all">Semua Kota</option>' +
+    Object.keys(CURATED_CITIES)
+      .map((city) => `<option value="${city}">${city}</option>`)
+      .join("");
+  citySelect.addEventListener("change", () => {
+    currentCityFilter = citySelect.value;
+    renderPlacesGrid();
+  });
+
   document.querySelectorAll("#placesFilter .chip").forEach((chip) => {
     chip.addEventListener("click", () => {
       document
@@ -1469,8 +1735,8 @@ document.addEventListener("DOMContentLoaded", () => {
       renderPlacesGrid();
     });
   });
-  // Jika sudah pernah deteksi lokasi sebelumnya, muat ulang tempat sekitar (kurasi + live API).
-  // Jika belum, tampilkan dulu data kurasi Kota Probolinggo sebagai rekomendasi awal.
+  // Jika sudah pernah deteksi lokasi sebelumnya, muat ulang tempat sekitar (kurasi seluruh kota + live API).
+  // Jika belum, tampilkan dulu data kurasi seluruh kota sebagai rekomendasi awal.
   const savedLoc = lsGet(LS_KEYS.LAST_LOCATION, null);
   if (savedLoc) {
     fetchNearbyPlaces(savedLoc.lat, savedLoc.lon);

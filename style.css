@@ -857,6 +857,9 @@ a {
   color: var(--text-muted);
 }
 
+.places-filter-row {
+  margin-bottom: 14px;
+}
 .places-filter {
   display: flex;
   gap: 8px;
