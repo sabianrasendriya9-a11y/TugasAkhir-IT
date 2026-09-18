@@ -7,6 +7,7 @@
 /* ============ KUNCI LOCALSTORAGE ============ */
 const LS_KEYS = {
   USER: "tm_user",
+  ACCOUNTS: "tm_accounts",
   SESSION: "tm_session",
   TRIPS: "tm_trips",
   ITINERARY: "tm_itinerary",
@@ -100,29 +101,428 @@ document.addEventListener("click", (e) => {
 });
 
 /* =============================================================
-   AUTENTIKASI (LOGIN / REGISTER) — disimpan di localStorage
-   ============================================================= */
-function initAuthPage() {
-  const user = lsGet(LS_KEYS.USER, null);
-  const loginExisting = document.getElementById("loginExisting");
-  const loginEmpty = document.getElementById("loginEmpty");
+   AUTENTIKASI
+   -------------------------------------------------------------
+   Dua cara masuk:
+   1. GOOGLE SIGN-IN (OAuth resmi) — pengguna login di halaman Google.
+      Password Google TIDAK PERNAH masuk ke aplikasi ini. Google mengirim
+      balik token berisi nama + email yang sudah terverifikasi oleh Google.
+   2. AKUN TRIPMATE — email + password milik aplikasi ini sendiri,
+      divalidasi ketat dan disimpan sebagai hash di localStorage.
 
-  if (user) {
-    loginExisting.classList.remove("hidden");
-    loginEmpty.classList.add("hidden");
-    document.getElementById("loginAvatar").textContent = user.name
-      .charAt(0)
-      .toUpperCase();
-    document.getElementById("loginExistingName").textContent = user.name;
-    document.getElementById("loginExistingEmail").textContent = user.email;
-  } else {
-    loginExisting.classList.add("hidden");
-    loginEmpty.classList.remove("hidden");
+   CATATAN PENTING soal keamanan:
+   Aplikasi ini tanpa backend, jadi hash password tersimpan di browser
+   pengguna. Ini cukup untuk tugas/demo, TAPI bukan keamanan tingkat
+   produksi. Jangan pernah memakai password asli Google/bank di sini.
+   ============================================================= */
+
+/* ---------- KONFIGURASI GOOGLE SIGN-IN ----------
+   Isi CLIENT_ID dengan OAuth Client ID milikmu dari Google Cloud Console:
+   1. Buka https://console.cloud.google.com/apis/credentials
+   2. Create Credentials → OAuth client ID → Web application
+   3. Tambahkan "Authorized JavaScript origins", misalnya http://localhost:5500
+   4. Salin Client ID-nya ke bawah ini.
+   Google Sign-In HANYA bekerja saat halaman dibuka lewat http/https
+   (contoh: Live Server VS Code), tidak bisa lewat file:// */
+const GOOGLE_CLIENT_ID = ""; // <-- isi dengan Client ID milikmu
+
+/* ---------- VALIDASI EMAIL ---------- */
+// Daftar domain email yang diterima. Salah ketik domain (gmial.com, gmail.co)
+// akan langsung ditolak sebelum pengguna bisa mendaftar/login.
+const ALLOWED_EMAIL_DOMAINS = [
+  "gmail.com",
+  "googlemail.com",
+  "yahoo.com",
+  "yahoo.co.id",
+  "outlook.com",
+  "hotmail.com",
+  "live.com",
+  "icloud.com",
+  "proton.me",
+];
+
+// Salah ketik domain yang umum → beri saran perbaikan, bukan sekadar ditolak
+const DOMAIN_TYPOS = {
+  "gmial.com": "gmail.com",
+  "gmai.com": "gmail.com",
+  "gmail.co": "gmail.com",
+  "gmail.cm": "gmail.com",
+  "gmail.con": "gmail.com",
+  "gnail.com": "gmail.com",
+  "gmail.om": "gmail.com",
+  "yahooo.com": "yahoo.com",
+  "yaho.com": "yahoo.com",
+  "outlok.com": "outlook.com",
+  "hotmial.com": "hotmail.com",
+};
+
+function validateEmail(email) {
+  email = (email || "").trim().toLowerCase();
+
+  if (!email) return { valid: false, message: "Email wajib diisi." };
+
+  // Format dasar email: ada nama, @, domain, dan ekstensi
+  const formatRegex =
+    /^[a-z0-9]([a-z0-9._%+-]*[a-z0-9])?@[a-z0-9.-]+\.[a-z]{2,}$/;
+  if (!formatRegex.test(email)) {
+    return {
+      valid: false,
+      message: "Format email tidak valid. Contoh benar: nama@gmail.com",
+    };
   }
 
-  // Tab switching
+  const domain = email.split("@")[1];
+
+  // Cek salah ketik domain yang umum
+  if (DOMAIN_TYPOS[domain]) {
+    return {
+      valid: false,
+      message: `Domain "${domain}" tidak valid. Maksud kamu "@${DOMAIN_TYPOS[domain]}"?`,
+    };
+  }
+
+  // Hanya domain penyedia email yang dikenal yang diterima
+  if (!ALLOWED_EMAIL_DOMAINS.includes(domain)) {
+    return {
+      valid: false,
+      message: `Domain "@${domain}" tidak didukung. Gunakan email seperti @gmail.com, @yahoo.com, atau @outlook.com.`,
+    };
+  }
+
+  // Aturan khusus Gmail: minimal 6 karakter sebelum @, hanya huruf/angka/titik
+  if (domain === "gmail.com" || domain === "googlemail.com") {
+    const localPart = email.split("@")[0];
+    if (localPart.length < 6) {
+      return {
+        valid: false,
+        message: "Alamat Gmail minimal 6 karakter sebelum tanda @.",
+      };
+    }
+    if (!/^[a-z0-9.]+$/.test(localPart)) {
+      return {
+        valid: false,
+        message: "Alamat Gmail hanya boleh berisi huruf, angka, dan titik.",
+      };
+    }
+    if (
+      localPart.startsWith(".") ||
+      localPart.endsWith(".") ||
+      localPart.includes("..")
+    ) {
+      return {
+        valid: false,
+        message:
+          "Alamat Gmail tidak boleh diawali/diakhiri titik atau punya titik ganda.",
+      };
+    }
+  }
+
+  return { valid: true, email };
+}
+
+/* ---------- VALIDASI PASSWORD ---------- */
+// Password yang terlalu umum langsung ditolak
+const COMMON_PASSWORDS = [
+  "password",
+  "password123",
+  "12345678",
+  "123456789",
+  "qwerty123",
+  "abc12345",
+  "admin123",
+  "tripmate",
+  "indonesia",
+  "iloveyou",
+];
+
+function validatePassword(password) {
+  if (!password) return { valid: false, message: "Password wajib diisi." };
+  if (password.length < 8)
+    return { valid: false, message: "Password minimal 8 karakter." };
+  if (password.length > 64)
+    return { valid: false, message: "Password maksimal 64 karakter." };
+  if (!/[A-Z]/.test(password))
+    return {
+      valid: false,
+      message: "Password harus mengandung minimal 1 huruf besar.",
+    };
+  if (!/[a-z]/.test(password))
+    return {
+      valid: false,
+      message: "Password harus mengandung minimal 1 huruf kecil.",
+    };
+  if (!/[0-9]/.test(password))
+    return {
+      valid: false,
+      message: "Password harus mengandung minimal 1 angka.",
+    };
+  if (/\s/.test(password))
+    return { valid: false, message: "Password tidak boleh mengandung spasi." };
+  if (COMMON_PASSWORDS.includes(password.toLowerCase())) {
+    return {
+      valid: false,
+      message: "Password terlalu umum dan mudah ditebak. Gunakan yang lain.",
+    };
+  }
+  return { valid: true };
+}
+
+// Hitung kekuatan password untuk indikator visual (0–100)
+function passwordStrength(password) {
+  let score = 0;
+  if (password.length >= 8) score += 25;
+  if (password.length >= 12) score += 15;
+  if (/[A-Z]/.test(password)) score += 15;
+  if (/[a-z]/.test(password)) score += 15;
+  if (/[0-9]/.test(password)) score += 15;
+  if (/[^A-Za-z0-9]/.test(password)) score += 15;
+  return Math.min(100, score);
+}
+
+/* ---------- HASHING PASSWORD ---------- */
+// Password tidak disimpan apa adanya, melainkan sebagai hash.
+// Memakai Web Crypto (SHA-256) bila tersedia; kalau halaman dibuka lewat
+// file:// (Web Crypto dimatikan browser), pakai hash cadangan sederhana.
+async function hashPassword(password) {
+  const salted = "tripmate$" + password;
+  if (window.crypto && window.crypto.subtle) {
+    try {
+      const data = new TextEncoder().encode(salted);
+      const digest = await window.crypto.subtle.digest("SHA-256", data);
+      return (
+        "sha256:" +
+        Array.from(new Uint8Array(digest))
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("")
+      );
+    } catch (e) {
+      /* lanjut ke cadangan di bawah */
+    }
+  }
+  // Hash cadangan (bukan kriptografi kuat, hanya agar tidak tersimpan polos)
+  let h1 = 0x811c9dc5,
+    h2 = 0x01000193;
+  for (let i = 0; i < salted.length; i++) {
+    h1 = ((h1 ^ salted.charCodeAt(i)) * 16777619) >>> 0;
+    h2 = ((h2 + salted.charCodeAt(i) * (i + 7)) * 2654435761) >>> 0;
+  }
+  return "fb:" + h1.toString(16) + h2.toString(16);
+}
+
+/* ---------- PENYIMPANAN AKUN ---------- */
+function getAccounts() {
+  return lsGet(LS_KEYS.ACCOUNTS, []);
+}
+function saveAccounts(accounts) {
+  lsSet(LS_KEYS.ACCOUNTS, accounts);
+}
+function findAccount(email) {
+  return (
+    getAccounts().find(
+      (a) => a.email.toLowerCase() === (email || "").trim().toLowerCase(),
+    ) || null
+  );
+}
+
+/* ---------- HELPER TAMPILAN ERROR ---------- */
+function showFieldError(errorId, inputId, message) {
+  const err = document.getElementById(errorId);
+  const input = document.getElementById(inputId);
+  if (err) {
+    err.textContent = message;
+    err.classList.remove("hidden");
+  }
+  if (input) input.classList.add("invalid");
+}
+function clearFieldError(errorId, inputId) {
+  const err = document.getElementById(errorId);
+  const input = document.getElementById(inputId);
+  if (err) err.classList.add("hidden");
+  if (input) input.classList.remove("invalid");
+}
+function clearAllAuthErrors() {
+  [
+    "errLoginEmail:loginEmail",
+    "errLoginPassword:loginPassword",
+    "errRegName:regName",
+    "errRegEmail:regEmail",
+    "errRegPassword:regPassword",
+    "errRegPassword2:regPassword2",
+    "errRegPhone:regPhone",
+    "errRegAddress:regAddress",
+  ].forEach((pair) => {
+    const [errId, inputId] = pair.split(":");
+    clearFieldError(errId, inputId);
+  });
+}
+
+/* ---------- MASUK KE APLIKASI SETELAH AUTENTIKASI BERHASIL ---------- */
+function completeLogin(userProfile, welcomeMessage) {
+  lsSet(LS_KEYS.USER, userProfile);
+  lsSet(LS_KEYS.SESSION, userProfile.email);
+
+  // Seed packing list default untuk pengguna baru
+  if (!lsGet(LS_KEYS.PACKING, null)) {
+    const defaults = [
+      "Pakaian",
+      "Charger",
+      "Powerbank",
+      "Dokumen",
+      "Obat Pribadi",
+      "Kamera",
+    ];
+    lsSet(
+      LS_KEYS.PACKING,
+      defaults.map((name) => ({ id: uid(), name, checked: false })),
+    );
+  }
+
+  showToast(welcomeMessage, "success", "🎉");
+  startApp();
+}
+
+/* =============================================================
+   GOOGLE SIGN-IN (OAuth resmi Google)
+   ============================================================= */
+
+// Membaca isi token JWT dari Google (bagian payload-nya saja, tanpa verifikasi
+// tanda tangan — verifikasi penuh memerlukan server).
+function parseGoogleToken(credential) {
+  try {
+    const payload = credential
+      .split(".")[1]
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    const json = decodeURIComponent(
+      atob(payload)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join(""),
+    );
+    return JSON.parse(json);
+  } catch (e) {
+    return null;
+  }
+}
+
+// Dipanggil otomatis oleh Google setelah pengguna berhasil login di Google
+function handleGoogleCredential(response) {
+  const data = parseGoogleToken(response.credential);
+
+  if (!data || !data.email) {
+    showToast("Gagal membaca data akun Google.", "error");
+    return;
+  }
+
+  // Google menandai apakah email tersebut sudah terverifikasi kepemilikannya
+  if (data.email_verified === false) {
+    showToast("Akun Google ini belum terverifikasi oleh Google.", "error");
+    return;
+  }
+
+  // Simpan/gabungkan sebagai akun bertipe Google (tanpa password lokal)
+  const accounts = getAccounts();
+  let account = accounts.find(
+    (a) => a.email.toLowerCase() === data.email.toLowerCase(),
+  );
+
+  if (!account) {
+    account = {
+      name: data.name || data.email.split("@")[0],
+      email: data.email,
+      phone: "",
+      address: "",
+      provider: "google",
+      passwordHash: null,
+      createdAt: Date.now(),
+    };
+    accounts.push(account);
+    saveAccounts(accounts);
+  }
+
+  completeLogin(
+    {
+      name: account.name,
+      email: account.email,
+      phone: account.phone,
+      address: account.address,
+      provider: "google",
+    },
+    `Login Google berhasil. Selamat datang, ${account.name.split(" ")[0]}!`,
+  );
+}
+
+// Tampilkan tombol Google, atau pesan penjelasan bila belum dikonfigurasi
+function initGoogleSignIn() {
+  const container = document.getElementById("googleBtnContainer");
+  const hint = document.getElementById("googleHint");
+  if (!container) return;
+
+  const isHttp =
+    location.protocol === "http:" || location.protocol === "https:";
+
+  if (!GOOGLE_CLIENT_ID) {
+    hint.className = "google-hint warn";
+    hint.innerHTML =
+      "⚙️ <b>Login Google belum aktif.</b> Isi <code>GOOGLE_CLIENT_ID</code> di script.js dengan OAuth Client ID dari Google Cloud Console untuk mengaktifkannya. Sementara itu, gunakan akun TripMate di bawah.";
+    return;
+  }
+  if (!isHttp) {
+    hint.className = "google-hint warn";
+    hint.innerHTML =
+      "⚙️ <b>Login Google butuh server.</b> Buka halaman ini lewat http:// (misalnya Live Server VS Code), bukan file://. Sementara itu, gunakan akun TripMate di bawah.";
+    return;
+  }
+  if (!window.google || !window.google.accounts) {
+    hint.className = "google-hint warn";
+    hint.textContent =
+      "⚙️ Library Google gagal dimuat. Periksa koneksi internet kamu.";
+    return;
+  }
+
+  try {
+    window.google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleGoogleCredential,
+    });
+    window.google.accounts.id.renderButton(container, {
+      theme: "outline",
+      size: "large",
+      width: 320,
+      text: "signin_with",
+      shape: "pill",
+      locale: "id",
+    });
+  } catch (e) {
+    hint.className = "google-hint warn";
+    hint.textContent =
+      "⚙️ Gagal menampilkan tombol Google. Periksa Client ID dan Authorized JavaScript origins.";
+  }
+}
+
+/* =============================================================
+   HALAMAN LOGIN / REGISTER (akun TripMate)
+   ============================================================= */
+function initAuthPage() {
+  clearAllAuthErrors();
+
+  // Coba tampilkan tombol Google (library dimuat async, jadi dicoba beberapa kali)
+  let googleTries = 0;
+  const googleTimer = setInterval(() => {
+    googleTries++;
+    if (
+      (window.google && window.google.accounts) ||
+      googleTries > 10 ||
+      !GOOGLE_CLIENT_ID
+    ) {
+      clearInterval(googleTimer);
+      initGoogleSignIn();
+    }
+  }, 300);
+
+  // --- Perpindahan tab Masuk / Daftar ---
   document.querySelectorAll(".auth-tab").forEach((tab) => {
-    tab.addEventListener("click", () => {
+    tab.onclick = () => {
       document
         .querySelectorAll(".auth-tab")
         .forEach((t) => t.classList.remove("active"));
@@ -134,56 +534,242 @@ function initAuthPage() {
       document
         .getElementById("registerForm")
         .classList.toggle("hidden", target !== "register");
-    });
-  });
-
-  document.getElementById("btnGoRegister").addEventListener("click", () => {
-    document.querySelector('.auth-tab[data-tab="register"]').click();
-  });
-
-  document.getElementById("btnLoginExisting").addEventListener("click", () => {
-    lsSet(LS_KEYS.SESSION, true);
-    showToast("Login berhasil, selamat datang kembali!", "success", "🎉");
-    startApp();
-  });
-
-  document.getElementById("registerForm").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const newUser = {
-      name: document.getElementById("regName").value.trim(),
-      email: document.getElementById("regEmail").value.trim(),
-      phone: document.getElementById("regPhone").value.trim(),
-      address: document.getElementById("regAddress").value.trim(),
+      clearAllAuthErrors();
     };
-    lsSet(LS_KEYS.USER, newUser);
-    lsSet(LS_KEYS.SESSION, true);
+  });
+  document.querySelectorAll("[data-goto]").forEach((link) => {
+    link.onclick = () =>
+      document
+        .querySelector(`.auth-tab[data-tab="${link.dataset.goto}"]`)
+        .click();
+  });
 
-    // Seed default packing list untuk pengguna baru
-    if (!lsGet(LS_KEYS.PACKING, null)) {
-      const defaults = [
-        "Pakaian",
-        "Charger",
-        "Powerbank",
-        "Dokumen",
-        "Obat Pribadi",
-        "Kamera",
-      ];
-      lsSet(
-        LS_KEYS.PACKING,
-        defaults.map((name) => ({ id: uid(), name, checked: false })),
-      );
+  // --- Tombol lihat/sembunyikan password ---
+  document.querySelectorAll(".toggle-pass").forEach((btn) => {
+    btn.onclick = () => {
+      const input = document.getElementById(btn.dataset.target);
+      const showing = input.type === "text";
+      input.type = showing ? "password" : "text";
+      btn.textContent = showing ? "👁️" : "🙈";
+    };
+  });
+
+  // --- Indikator kekuatan password saat mengetik ---
+  const regPassword = document.getElementById("regPassword");
+  regPassword.oninput = () => {
+    const score = passwordStrength(regPassword.value);
+    const fill = document.getElementById("passStrengthFill");
+    fill.style.width = score + "%";
+    fill.style.background =
+      score < 50 ? "#ef4444" : score < 75 ? "#f59e0b" : "#22c55e";
+    clearFieldError("errRegPassword", "regPassword");
+  };
+
+  // Hapus tanda error begitu pengguna memperbaiki isian
+  [
+    ["loginEmail", "errLoginEmail"],
+    ["loginPassword", "errLoginPassword"],
+    ["regName", "errRegName"],
+    ["regEmail", "errRegEmail"],
+    ["regPassword2", "errRegPassword2"],
+    ["regPhone", "errRegPhone"],
+    ["regAddress", "errRegAddress"],
+  ].forEach(([inputId, errId]) => {
+    const el = document.getElementById(inputId);
+    if (el) el.addEventListener("input", () => clearFieldError(errId, inputId));
+  });
+
+  /* ---------- PROSES LOGIN ---------- */
+  document.getElementById("loginForm").onsubmit = async (e) => {
+    e.preventDefault();
+    clearAllAuthErrors();
+
+    const emailInput = document.getElementById("loginEmail").value;
+    const password = document.getElementById("loginPassword").value;
+
+    // 1. Email harus valid formatnya — kalau salah, tidak bisa login
+    const emailCheck = validateEmail(emailInput);
+    if (!emailCheck.valid) {
+      showFieldError("errLoginEmail", "loginEmail", emailCheck.message);
+      showToast("Email tidak valid.", "error");
+      return;
     }
 
-    showToast("Login berhasil! Akun kamu telah dibuat.", "success", "🎉");
-    startApp();
-  });
+    // 2. Akun harus sudah terdaftar
+    const account = findAccount(emailCheck.email);
+    if (!account) {
+      showFieldError(
+        "errLoginEmail",
+        "loginEmail",
+        "Email ini belum terdaftar. Silakan daftar terlebih dahulu.",
+      );
+      showToast("Akun tidak ditemukan.", "error");
+      return;
+    }
+
+    // 3. Akun Google harus masuk lewat tombol Google
+    if (account.provider === "google") {
+      showFieldError(
+        "errLoginEmail",
+        "loginEmail",
+        'Akun ini terdaftar via Google. Gunakan tombol "Masuk dengan Google" di atas.',
+      );
+      showToast("Gunakan login Google untuk akun ini.", "error");
+      return;
+    }
+
+    // 4. Password harus cocok — kalau salah, tidak bisa login
+    const inputHash = await hashPassword(password);
+    if (inputHash !== account.passwordHash) {
+      showFieldError(
+        "errLoginPassword",
+        "loginPassword",
+        "Password salah. Periksa kembali password kamu.",
+      );
+      showToast("Password salah.", "error", "🔒");
+      return;
+    }
+
+    completeLogin(
+      {
+        name: account.name,
+        email: account.email,
+        phone: account.phone,
+        address: account.address,
+        provider: "local",
+      },
+      `Login berhasil. Selamat datang kembali, ${account.name.split(" ")[0]}!`,
+    );
+  };
+
+  /* ---------- PROSES REGISTER ---------- */
+  document.getElementById("registerForm").onsubmit = async (e) => {
+    e.preventDefault();
+    clearAllAuthErrors();
+
+    const name = document.getElementById("regName").value.trim();
+    const emailInput = document.getElementById("regEmail").value;
+    const password = document.getElementById("regPassword").value;
+    const password2 = document.getElementById("regPassword2").value;
+    const phone = document.getElementById("regPhone").value.trim();
+    const address = document.getElementById("regAddress").value.trim();
+
+    let hasError = false;
+
+    // 1. Nama minimal 3 karakter
+    if (name.length < 3) {
+      showFieldError(
+        "errRegName",
+        "regName",
+        "Nama lengkap minimal 3 karakter.",
+      );
+      hasError = true;
+    }
+
+    // 2. Email harus valid — salah format/domain langsung ditolak
+    const emailCheck = validateEmail(emailInput);
+    if (!emailCheck.valid) {
+      showFieldError("errRegEmail", "regEmail", emailCheck.message);
+      hasError = true;
+    } else if (findAccount(emailCheck.email)) {
+      showFieldError(
+        "errRegEmail",
+        "regEmail",
+        "Email ini sudah terdaftar. Silakan masuk.",
+      );
+      hasError = true;
+    }
+
+    // 3. Password harus memenuhi syarat keamanan
+    const passCheck = validatePassword(password);
+    if (!passCheck.valid) {
+      showFieldError("errRegPassword", "regPassword", passCheck.message);
+      hasError = true;
+    }
+
+    // 4. Konfirmasi password harus sama
+    if (password !== password2) {
+      showFieldError(
+        "errRegPassword2",
+        "regPassword2",
+        "Konfirmasi password tidak cocok.",
+      );
+      hasError = true;
+    }
+
+    // 5. Nomor HP Indonesia: 08xxx / +628xxx / 628xxx, 10–15 digit
+    const phoneClean = phone.replace(/[\s-]/g, "");
+    if (!/^(\+62|62|0)8[1-9][0-9]{6,11}$/.test(phoneClean)) {
+      showFieldError(
+        "errRegPhone",
+        "regPhone",
+        "Nomor HP tidak valid. Gunakan format 08xxxxxxxxxx.",
+      );
+      hasError = true;
+    }
+
+    // 6. Alamat minimal 10 karakter
+    if (address.length < 10) {
+      showFieldError(
+        "errRegAddress",
+        "regAddress",
+        "Alamat terlalu singkat, minimal 10 karakter.",
+      );
+      hasError = true;
+    }
+
+    if (hasError) {
+      showToast(
+        "Pendaftaran gagal. Periksa isian yang ditandai merah.",
+        "error",
+      );
+      return;
+    }
+
+    // Semua valid → simpan akun beserta hash password-nya
+    const accounts = getAccounts();
+    accounts.push({
+      name,
+      email: emailCheck.email,
+      phone: phoneClean,
+      address,
+      provider: "local",
+      passwordHash: await hashPassword(password),
+      createdAt: Date.now(),
+    });
+    saveAccounts(accounts);
+
+    e.target.reset();
+    document.getElementById("passStrengthFill").style.width = "0%";
+
+    completeLogin(
+      {
+        name,
+        email: emailCheck.email,
+        phone: phoneClean,
+        address,
+        provider: "local",
+      },
+      "Akun berhasil dibuat. Selamat datang di TripMate!",
+    );
+  };
 }
 
 function logout() {
-  lsSet(LS_KEYS.SESSION, false);
+  lsSet(LS_KEYS.SESSION, null);
+
+  // Putus sesi otomatis Google agar tidak langsung login ulang
+  if (window.google && window.google.accounts && GOOGLE_CLIENT_ID) {
+    try {
+      window.google.accounts.id.disableAutoSelect();
+    } catch (e) {}
+  }
+
   showToast("Kamu telah logout. Sampai jumpa lagi!", "info", "🚪");
   document.getElementById("appShell").classList.add("hidden");
   document.getElementById("authPage").classList.remove("hidden");
+  document.getElementById("loginForm").reset();
+  document.getElementById("registerForm").reset();
   initAuthPage();
 }
 
@@ -261,6 +847,17 @@ function renderProfile() {
   document.getElementById("profileEmail").textContent = user.email || "-";
   document.getElementById("profilePhone").textContent = user.phone || "-";
   document.getElementById("profileAddress").textContent = user.address || "-";
+
+  // Tandai apakah akun berasal dari Google atau akun TripMate biasa
+  const badge = document.getElementById("profileProvider");
+  if (badge) {
+    badge.textContent =
+      user.provider === "google"
+        ? "🔐 Terhubung dengan Google"
+        : "🔑 Akun TripMate";
+    badge.className =
+      "provider-badge " + (user.provider === "google" ? "google" : "local");
+  }
 }
 
 function openEditProfile() {
@@ -900,11 +1497,28 @@ const CURATED_CITIES = {
         description: "Museum sejarah kretek Sampoerna di kawasan kota tua.",
       },
       {
-        name: "Tunjungan Plaza",
-        category: "mall",
-        address: "Jl. Basuki Rahmat, Surabaya",
-        lat: -7.2624,
-        lon: 112.7396,
+        name: "Jembatan Merah",
+        category: "budaya",
+        address: "Surabaya",
+        lat: -7.2385,
+        lon: 112.7368,
+        description: "Kawasan bersejarah peninggalan kolonial.",
+      },
+      {
+        name: "Museum Kapal Selam (Monkasel)",
+        category: "wisata",
+        address: "Surabaya",
+        lat: -7.2661,
+        lon: 112.7439,
+        description: "Museum kapal selam asli KRI Pasopati.",
+      },
+      {
+        name: "Taman Bungkul",
+        category: "taman",
+        address: "Surabaya",
+        lat: -7.2925,
+        lon: 112.7387,
+        description: "Taman kota populer untuk bersantai dan olahraga.",
       },
       {
         name: "Kebun Binatang Surabaya",
@@ -927,6 +1541,67 @@ const CURATED_CITIES = {
         address: "Surabaya",
         lat: -7.3327,
         lon: 112.7166,
+        description: "Masjid terbesar kedua di Indonesia.",
+      },
+      {
+        name: "Klenteng Sanggar Agung",
+        category: "budaya",
+        address: "Kenjeran, Surabaya",
+        lat: -7.2265,
+        lon: 112.7972,
+        description: "Klenteng dengan patung Dewi Kwan Im menghadap laut.",
+      },
+      {
+        name: "Tunjungan Plaza",
+        category: "mall",
+        address: "Jl. Basuki Rahmat, Surabaya",
+        lat: -7.2624,
+        lon: 112.7396,
+      },
+      {
+        name: "Pakuwon Mall",
+        category: "mall",
+        address: "Surabaya Barat",
+        lat: -7.2793,
+        lon: 112.6725,
+      },
+      {
+        name: "Sate Klopo Ondomohen",
+        category: "kuliner",
+        address: "Surabaya",
+        lat: -7.2665,
+        lon: 112.7413,
+        description: "Sate klopo (kelapa) khas Surabaya.",
+      },
+      {
+        name: "Rawon Setan",
+        category: "kuliner",
+        address: "Jl. Embong Malang, Surabaya",
+        lat: -7.2635,
+        lon: 112.7376,
+      },
+      {
+        name: "Rujak Cingur Ahmad Jais",
+        category: "kuliner",
+        address: "Surabaya",
+        lat: -7.254,
+        lon: 112.744,
+        description: "Rujak cingur legendaris khas Surabaya.",
+      },
+      {
+        name: "Lontong Balap Pak Gendut",
+        category: "kuliner",
+        address: "Surabaya",
+        lat: -7.258,
+        lon: 112.742,
+      },
+      {
+        name: "Zangrandi Ice Cream",
+        category: "cafe",
+        address: "Jl. Yos Sudarso, Surabaya",
+        lat: -7.2603,
+        lon: 112.743,
+        description: "Kedai es krim legendaris sejak era kolonial.",
       },
       {
         name: "Hotel Majapahit",
@@ -935,6 +1610,37 @@ const CURATED_CITIES = {
         lat: -7.2637,
         lon: 112.7396,
         description: "Hotel bersejarah peninggalan kolonial.",
+      },
+      {
+        name: "Bumi Surabaya City Resort",
+        category: "hotel",
+        address: "Surabaya",
+        lat: -7.266,
+        lon: 112.7392,
+      },
+      {
+        name: "Stasiun Surabaya Gubeng",
+        category: "penting",
+        address: "Surabaya",
+        lat: -7.2646,
+        lon: 112.7523,
+        description: "Stasiun kereta api utama.",
+      },
+      {
+        name: "Terminal Purabaya (Bungurasih)",
+        category: "penting",
+        address: "Surabaya",
+        lat: -7.3444,
+        lon: 112.7186,
+        description: "Terminal bus antar kota terbesar.",
+      },
+      {
+        name: "Pelabuhan Tanjung Perak",
+        category: "penting",
+        address: "Surabaya",
+        lat: -7.1953,
+        lon: 112.7328,
+        description: "Pelabuhan utama Surabaya.",
       },
     ],
   },
@@ -957,11 +1663,35 @@ const CURATED_CITIES = {
         lon: 112.5194,
       },
       {
+        name: "Jatim Park 2",
+        category: "wisata",
+        address: "Batu, Malang",
+        lat: -7.8776,
+        lon: 112.523,
+        description: "Berisi Museum Satwa dan Batu Secret Zoo.",
+      },
+      {
         name: "Museum Angkut",
         category: "wisata",
         address: "Batu, Malang",
         lat: -7.8802,
         lon: 112.5133,
+      },
+      {
+        name: "Batu Night Spectacular (BNS)",
+        category: "wisata",
+        address: "Batu, Malang",
+        lat: -7.8721,
+        lon: 112.5211,
+        description: "Taman hiburan malam di Batu.",
+      },
+      {
+        name: "Coban Rondo",
+        category: "wisata",
+        address: "Pujon, Malang",
+        lat: -7.8783,
+        lon: 112.4636,
+        description: "Air terjun populer di kawasan Pujon.",
       },
       {
         name: "Kampung Warna Warni Jodipan",
@@ -972,11 +1702,80 @@ const CURATED_CITIES = {
         description: "Kampung tematik penuh warna.",
       },
       {
+        name: "Alun-Alun Tugu Malang",
+        category: "wisata",
+        address: "Malang",
+        lat: -7.9758,
+        lon: 112.6317,
+        description: "Taman kota di depan Balai Kota Malang.",
+      },
+      {
+        name: "Toko Oen",
+        category: "kuliner",
+        address: "Jl. Basuki Rahmat, Malang",
+        lat: -7.9812,
+        lon: 112.6289,
+        description: "Restoran & es krim legendaris sejak 1930.",
+      },
+      {
+        name: "Bakso President",
+        category: "kuliner",
+        address: "Malang",
+        lat: -7.978,
+        lon: 112.6335,
+      },
+      {
+        name: "Pecel Kawi",
+        category: "kuliner",
+        address: "Jl. Kawi, Malang",
+        lat: -7.9856,
+        lon: 112.6255,
+      },
+      {
+        name: "Rumah Makan Inggil",
+        category: "kuliner",
+        address: "Malang",
+        lat: -7.9825,
+        lon: 112.627,
+        description: "Restoran dengan nuansa museum & seni.",
+      },
+      {
+        name: "Coffee Toffee Malang",
+        category: "cafe",
+        address: "Malang",
+        lat: -7.974,
+        lon: 112.618,
+      },
+      {
         name: "Malang Town Square (MATOS)",
         category: "mall",
         address: "Malang",
         lat: -7.9575,
         lon: 112.6172,
+      },
+      {
+        name: "Hotel Tugu Malang",
+        category: "hotel",
+        address: "Jl. Tugu, Malang",
+        lat: -7.9765,
+        lon: 112.632,
+        description: "Hotel bertema seni dan antik.",
+      },
+      {
+        name: "Stasiun Malang Kota Baru",
+        category: "penting",
+        address: "Malang",
+        lat: -7.977,
+        lon: 112.6357,
+        description: "Stasiun kereta api utama Malang.",
+      },
+      {
+        name: "Terminal Arjosari",
+        category: "penting",
+        address: "Malang",
+        lat: -7.943,
+        lon: 112.644,
+        description: "Terminal bus utama Malang.",
       },
     ],
   },
@@ -1008,6 +1807,14 @@ const CURATED_CITIES = {
         description: "Kompleks candi Hindu terbesar di Indonesia.",
       },
       {
+        name: "Candi Borobudur",
+        category: "wisata",
+        address: "Magelang (dekat Yogyakarta)",
+        lat: -7.6079,
+        lon: 110.2038,
+        description: "Candi Buddha terbesar di dunia.",
+      },
+      {
         name: "Taman Sari",
         category: "budaya",
         address: "Yogyakarta",
@@ -1021,6 +1828,103 @@ const CURATED_CITIES = {
         address: "Yogyakarta",
         lat: -7.7828,
         lon: 110.3671,
+      },
+      {
+        name: "Alun-Alun Kidul",
+        category: "wisata",
+        address: "Yogyakarta",
+        lat: -7.8117,
+        lon: 110.3636,
+        description: "Alun-alun selatan dengan tradisi masangin.",
+      },
+      {
+        name: "Pantai Parangtritis",
+        category: "wisata",
+        address: "Bantul, Yogyakarta",
+        lat: -8.0253,
+        lon: 110.3316,
+      },
+      {
+        name: "Tebing Breksi",
+        category: "wisata",
+        address: "Sleman, Yogyakarta",
+        lat: -7.7712,
+        lon: 110.5111,
+        description: "Bekas tambang batu dengan pahatan relief.",
+      },
+      {
+        name: "Gembira Loka Zoo",
+        category: "wisata",
+        address: "Yogyakarta",
+        lat: -7.8109,
+        lon: 110.3934,
+      },
+      {
+        name: "Gudeg Yu Djum",
+        category: "kuliner",
+        address: "Yogyakarta",
+        lat: -7.7825,
+        lon: 110.3776,
+        description: "Gudeg legendaris khas Yogyakarta.",
+      },
+      {
+        name: "Angkringan Lik Man (Kopi Joss)",
+        category: "kuliner",
+        address: "Jl. Wongsodirjan, Yogyakarta",
+        lat: -7.7906,
+        lon: 110.3672,
+        description: "Angkringan legendaris dengan kopi arang.",
+      },
+      {
+        name: "Bakpia Pathok 25",
+        category: "kuliner",
+        address: "Yogyakarta",
+        lat: -7.7973,
+        lon: 110.3556,
+      },
+      {
+        name: "Sate Klathak Pak Pong",
+        category: "kuliner",
+        address: "Bantul, Yogyakarta",
+        lat: -7.8636,
+        lon: 110.3689,
+      },
+      {
+        name: "Malioboro Mall",
+        category: "mall",
+        address: "Yogyakarta",
+        lat: -7.7924,
+        lon: 110.3659,
+      },
+      {
+        name: "Hotel Tentrem Yogyakarta",
+        category: "hotel",
+        address: "Yogyakarta",
+        lat: -7.7784,
+        lon: 110.3706,
+      },
+      {
+        name: "Hotel Phoenix Yogyakarta",
+        category: "hotel",
+        address: "Jl. Jenderal Sudirman, Yogyakarta",
+        lat: -7.7823,
+        lon: 110.3695,
+      },
+      {
+        name: "Stasiun Yogyakarta (Tugu)",
+        category: "penting",
+        address: "Yogyakarta",
+        lat: -7.7896,
+        lon: 110.363,
+        description: "Stasiun kereta api utama Yogyakarta.",
+      },
+      {
+        name: "Terminal Giwangan",
+        category: "penting",
+        address: "Yogyakarta",
+        lat: -7.828,
+        lon: 110.3805,
+        description: "Terminal bus utama Yogyakarta.",
       },
     ],
   },
@@ -1052,6 +1956,30 @@ const CURATED_CITIES = {
         lon: 107.4022,
       },
       {
+        name: "Tangkuban Perahu",
+        category: "wisata",
+        address: "Lembang, Bandung",
+        lat: -6.7597,
+        lon: 107.6098,
+        description: "Gunung berapi dengan kawah ikonik.",
+      },
+      {
+        name: "Farmhouse Lembang",
+        category: "wisata",
+        address: "Lembang, Bandung",
+        lat: -6.8226,
+        lon: 107.6035,
+        description: "Wisata bertema pedesaan Eropa.",
+      },
+      {
+        name: "Floating Market Lembang",
+        category: "wisata",
+        address: "Lembang, Bandung",
+        lat: -6.8221,
+        lon: 107.6373,
+        description: "Pasar terapung dengan wahana keluarga.",
+      },
+      {
         name: "Trans Studio Bandung",
         category: "wisata",
         address: "Bandung",
@@ -1059,11 +1987,78 @@ const CURATED_CITIES = {
         lon: 107.6382,
       },
       {
+        name: "Masjid Raya Bandung",
+        category: "budaya",
+        address: "Alun-Alun Bandung",
+        lat: -6.9218,
+        lon: 107.607,
+        description: "Masjid ikonik di pusat Alun-Alun Bandung.",
+      },
+      {
+        name: "Batagor Kingsley",
+        category: "kuliner",
+        address: "Bandung",
+        lat: -6.911,
+        lon: 107.6098,
+      },
+      {
+        name: "Mie Kocok Mang Dadeng",
+        category: "kuliner",
+        address: "Bandung",
+        lat: -6.9147,
+        lon: 107.6023,
+      },
+      {
+        name: "Sate Hadori",
+        category: "kuliner",
+        address: "Bandung",
+        lat: -6.9037,
+        lon: 107.6193,
+      },
+      {
+        name: "Kopi Selasar",
+        category: "cafe",
+        address: "Bandung",
+        lat: -6.889,
+        lon: 107.6135,
+      },
+      {
+        name: "Cihampelas Walk",
+        category: "mall",
+        address: "Bandung",
+        lat: -6.8919,
+        lon: 107.6058,
+      },
+      {
         name: "Paris Van Java Mall",
         category: "mall",
         address: "Bandung",
         lat: -6.8926,
         lon: 107.5885,
+      },
+      {
+        name: "Hotel Savoy Homann",
+        category: "hotel",
+        address: "Jl. Asia Afrika, Bandung",
+        lat: -6.9179,
+        lon: 107.6088,
+        description: "Hotel bersejarah bergaya Art Deco.",
+      },
+      {
+        name: "Stasiun Bandung",
+        category: "penting",
+        address: "Bandung",
+        lat: -6.9139,
+        lon: 107.6023,
+        description: "Stasiun kereta api utama Bandung.",
+      },
+      {
+        name: "Terminal Leuwipanjang",
+        category: "penting",
+        address: "Bandung",
+        lat: -6.943,
+        lon: 107.5892,
+        description: "Terminal bus antar kota.",
       },
     ],
   },
@@ -1095,11 +2090,35 @@ const CURATED_CITIES = {
         lon: 106.8317,
       },
       {
-        name: "Grand Indonesia Mall",
-        category: "mall",
+        name: "Taman Mini Indonesia Indah (TMII)",
+        category: "wisata",
+        address: "Jakarta Timur",
+        lat: -6.3024,
+        lon: 106.8951,
+        description: "Taman rekreasi budaya nusantara.",
+      },
+      {
+        name: "Ragunan Zoo",
+        category: "wisata",
+        address: "Jakarta Selatan",
+        lat: -6.3125,
+        lon: 106.8203,
+      },
+      {
+        name: "Pelabuhan Sunda Kelapa",
+        category: "penting",
+        address: "Jakarta Utara",
+        lat: -6.1252,
+        lon: 106.8106,
+        description: "Pelabuhan bersejarah era Batavia.",
+      },
+      {
+        name: "Bundaran HI",
+        category: "wisata",
         address: "Jakarta Pusat",
-        lat: -6.1954,
-        lon: 106.8206,
+        lat: -6.1948,
+        lon: 106.823,
+        description: "Landmark ikonik Jalan Thamrin.",
       },
       {
         name: "Masjid Istiqlal",
@@ -1108,6 +2127,90 @@ const CURATED_CITIES = {
         lat: -6.1702,
         lon: 106.8307,
         description: "Masjid nasional terbesar di Asia Tenggara.",
+      },
+      {
+        name: "Gereja Katedral Jakarta",
+        category: "budaya",
+        address: "Jakarta Pusat",
+        lat: -6.1699,
+        lon: 106.8317,
+        description: "Gereja katolik bersejarah, tepat di seberang Istiqlal.",
+      },
+      {
+        name: "Soto Betawi H. Ma'ruf",
+        category: "kuliner",
+        address: "Jakarta",
+        lat: -6.1832,
+        lon: 106.8188,
+      },
+      {
+        name: "Nasi Uduk Kebon Kacang",
+        category: "kuliner",
+        address: "Jakarta Pusat",
+        lat: -6.1897,
+        lon: 106.8172,
+      },
+      {
+        name: "Kerak Telor Pak Edi",
+        category: "kuliner",
+        address: "Jakarta",
+        lat: -6.1256,
+        lon: 106.8317,
+        description:
+          "Kuliner khas Betawi, sering dijumpai di kawasan Ancol/PRJ.",
+      },
+      {
+        name: "Sarinah",
+        category: "mall",
+        address: "Jakarta Pusat",
+        lat: -6.1896,
+        lon: 106.8226,
+        description: "Pusat perbelanjaan pertama di Indonesia.",
+      },
+      {
+        name: "Grand Indonesia Mall",
+        category: "mall",
+        address: "Jakarta Pusat",
+        lat: -6.1954,
+        lon: 106.8206,
+      },
+      {
+        name: "Plaza Indonesia",
+        category: "mall",
+        address: "Jakarta Pusat",
+        lat: -6.1934,
+        lon: 106.8222,
+      },
+      {
+        name: "Hotel Indonesia Kempinski",
+        category: "hotel",
+        address: "Jl. M.H. Thamrin, Jakarta",
+        lat: -6.1947,
+        lon: 106.8225,
+      },
+      {
+        name: "Stasiun Gambir",
+        category: "penting",
+        address: "Jakarta Pusat",
+        lat: -6.1766,
+        lon: 106.8306,
+        description: "Stasiun kereta api utama Jakarta.",
+      },
+      {
+        name: "Terminal Kampung Rambutan",
+        category: "penting",
+        address: "Jakarta Timur",
+        lat: -6.3123,
+        lon: 106.8631,
+        description: "Terminal bus antar kota.",
+      },
+      {
+        name: "Bandara Soekarno-Hatta",
+        category: "penting",
+        address: "Tangerang (melayani Jakarta)",
+        lat: -6.1256,
+        lon: 106.6559,
+        description: "Bandara internasional utama.",
       },
     ],
   },
@@ -1578,12 +2681,13 @@ function performGlobalSearch(query) {
 document.addEventListener("DOMContentLoaded", () => {
   applyDarkMode();
 
-  // Cek sesi login
+  // Cek sesi login: sesi kini berisi email pengguna yang sedang masuk
   const user = lsGet(LS_KEYS.USER, null);
-  const session = lsGet(LS_KEYS.SESSION, false);
-  if (user && session) {
+  const session = lsGet(LS_KEYS.SESSION, null);
+  if (user && session && typeof session === "string" && findAccount(session)) {
     startApp();
   } else {
+    lsSet(LS_KEYS.SESSION, null);
     initAuthPage();
   }
 
@@ -1621,17 +2725,62 @@ document.addEventListener("DOMContentLoaded", () => {
     .addEventListener("click", openEditProfile);
   document.getElementById("formEditProfile").addEventListener("submit", (e) => {
     e.preventDefault();
+    const name = document.getElementById("editName").value.trim();
+    const emailInput = document.getElementById("editEmail").value;
+    const phone = document.getElementById("editPhone").value.trim();
+    const address = document.getElementById("editAddress").value.trim();
+    const currentUser = lsGet(LS_KEYS.USER, {});
+
+    // Validasi sama ketatnya dengan saat mendaftar
+    if (name.length < 3) {
+      showToast("Nama lengkap minimal 3 karakter.", "error");
+      return;
+    }
+    const emailCheck = validateEmail(emailInput);
+    if (!emailCheck.valid) {
+      showToast(emailCheck.message, "error");
+      return;
+    }
+    // Email baru tidak boleh bentrok dengan akun lain
+    if (
+      emailCheck.email !== currentUser.email.toLowerCase() &&
+      findAccount(emailCheck.email)
+    ) {
+      showToast("Email tersebut sudah dipakai akun lain.", "error");
+      return;
+    }
+    const phoneClean = phone.replace(/[\s-]/g, "");
+    if (!/^(\+62|62|0)8[1-9][0-9]{6,11}$/.test(phoneClean)) {
+      showToast("Nomor HP tidak valid. Gunakan format 08xxxxxxxxxx.", "error");
+      return;
+    }
+    if (address.length < 10) {
+      showToast("Alamat terlalu singkat, minimal 10 karakter.", "error");
+      return;
+    }
+
+    // Perbarui data akun yang tersimpan (password tetap tidak berubah)
+    const accounts = getAccounts().map((a) =>
+      a.email.toLowerCase() === currentUser.email.toLowerCase()
+        ? { ...a, name, email: emailCheck.email, phone: phoneClean, address }
+        : a,
+    );
+    saveAccounts(accounts);
+
     const updated = {
-      name: document.getElementById("editName").value.trim(),
-      email: document.getElementById("editEmail").value.trim(),
-      phone: document.getElementById("editPhone").value.trim(),
-      address: document.getElementById("editAddress").value.trim(),
+      ...currentUser,
+      name,
+      email: emailCheck.email,
+      phone: phoneClean,
+      address,
     };
     lsSet(LS_KEYS.USER, updated);
+    lsSet(LS_KEYS.SESSION, emailCheck.email);
+
     renderProfile();
     updateNavUser();
     closeModal("modalEditProfile");
-    showToast("Data berhasil disimpan.", "success", "✅");
+    showToast("Data profil berhasil disimpan.", "success", "✅");
   });
 
   /* ---------- DASHBOARD SHORTCUTS ---------- */

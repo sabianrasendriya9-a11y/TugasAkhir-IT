@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TripMate — Smart Trip Planner</title>
     <link rel="stylesheet" href="style.css" />
+    <!-- Library resmi Google Identity Services untuk tombol "Masuk dengan Google" -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
   <body>
     <!-- ======================= TOAST CONTAINER ======================= -->
@@ -34,39 +36,59 @@
           </p>
         </div>
 
+        <!-- GOOGLE SIGN-IN (OAuth resmi — password ditangani Google, bukan aplikasi ini) -->
+        <div class="google-signin-wrap">
+          <div id="googleBtnContainer"></div>
+          <p class="google-hint" id="googleHint">
+            Masuk dengan akun Google asli. Password kamu diproses langsung oleh
+            Google, tidak pernah dikirim ke TripMate.
+          </p>
+        </div>
+        <div class="auth-divider"><span>atau gunakan akun TripMate</span></div>
+
         <div class="auth-tabs">
           <button class="auth-tab active" data-tab="login">Masuk</button>
           <button class="auth-tab" data-tab="register">Daftar</button>
         </div>
 
         <!-- LOGIN TAB -->
-        <div class="auth-form-wrap" id="loginForm">
-          <div id="loginExisting" class="hidden">
-            <div class="login-existing-card">
-              <div class="avatar-circle" id="loginAvatar">T</div>
-              <div>
-                <p class="login-existing-name" id="loginExistingName">
-                  Nama Pengguna
-                </p>
-                <p class="login-existing-email" id="loginExistingEmail">
-                  email@contoh.com
-                </p>
-              </div>
+        <form class="auth-form-wrap" id="loginForm">
+          <div class="form-group">
+            <label for="loginEmail">Email</label>
+            <input
+              type="email"
+              id="loginEmail"
+              placeholder="cth. andi@gmail.com"
+              autocomplete="username"
+              required
+            />
+            <p class="field-error hidden" id="errLoginEmail"></p>
+          </div>
+          <div class="form-group">
+            <label for="loginPassword">Password</label>
+            <div class="password-wrap">
+              <input
+                type="password"
+                id="loginPassword"
+                placeholder="Masukkan password"
+                autocomplete="current-password"
+                required
+              />
+              <button
+                type="button"
+                class="toggle-pass"
+                data-target="loginPassword"
+              >
+                👁️
+              </button>
             </div>
-            <button class="btn btn-primary btn-block" id="btnLoginExisting">
-              Masuk sebagai akun ini
-            </button>
+            <p class="field-error hidden" id="errLoginPassword"></p>
           </div>
-          <div id="loginEmpty" class="hidden">
-            <p class="auth-empty-text">
-              Belum ada akun tersimpan di perangkat ini. Silakan daftar terlebih
-              dahulu.
-            </p>
-            <button class="btn btn-secondary btn-block" id="btnGoRegister">
-              Buat Akun Baru
-            </button>
-          </div>
-        </div>
+          <button type="submit" class="btn btn-primary btn-block">Masuk</button>
+          <p class="auth-switch-text">
+            Belum punya akun? <b data-goto="register">Daftar di sini</b>
+          </p>
+        </form>
 
         <!-- REGISTER TAB -->
         <form class="auth-form-wrap hidden" id="registerForm">
@@ -78,15 +100,65 @@
               placeholder="cth. Andi Saputra"
               required
             />
+            <p class="field-error hidden" id="errRegName"></p>
           </div>
           <div class="form-group">
             <label for="regEmail">Email</label>
             <input
               type="email"
               id="regEmail"
-              placeholder="cth. andi@email.com"
+              placeholder="cth. andi@gmail.com"
+              autocomplete="username"
               required
             />
+            <p class="field-error hidden" id="errRegEmail"></p>
+          </div>
+          <div class="form-group">
+            <label for="regPassword">Password</label>
+            <div class="password-wrap">
+              <input
+                type="password"
+                id="regPassword"
+                placeholder="Minimal 8 karakter"
+                autocomplete="new-password"
+                required
+              />
+              <button
+                type="button"
+                class="toggle-pass"
+                data-target="regPassword"
+              >
+                👁️
+              </button>
+            </div>
+            <div class="pass-strength">
+              <div class="pass-strength-fill" id="passStrengthFill"></div>
+            </div>
+            <p class="pass-req" id="passReqText">
+              Password wajib minimal 8 karakter, mengandung huruf besar, huruf
+              kecil, dan angka.
+            </p>
+            <p class="field-error hidden" id="errRegPassword"></p>
+          </div>
+          <div class="form-group">
+            <label for="regPassword2">Ulangi Password</label>
+            <div class="password-wrap">
+              <input
+                type="password"
+                id="regPassword2"
+                placeholder="Ketik ulang password"
+                autocomplete="new-password"
+                required
+              />
+              <button
+                type="button"
+                class="toggle-pass"
+                data-target="regPassword2"
+              >
+                👁️
+              </button>
+            </div>
+            <p class="field-error hidden" id="errRegPassword2"></p>
           </div>
           <div class="form-group">
             <label for="regPhone">Nomor HP</label>
@@ -96,6 +168,7 @@
               placeholder="cth. 081234567890"
               required
             />
+            <p class="field-error hidden" id="errRegPhone"></p>
           </div>
           <div class="form-group">
             <label for="regAddress">Alamat Lengkap</label>
@@ -105,10 +178,14 @@
               placeholder="cth. Jl. Merdeka No. 10, Malang"
               required
             ></textarea>
+            <p class="field-error hidden" id="errRegAddress"></p>
           </div>
           <button type="submit" class="btn btn-primary btn-block">
             Daftar & Mulai
           </button>
+          <p class="auth-switch-text">
+            Sudah punya akun? <b data-goto="login">Masuk di sini</b>
+          </p>
         </form>
       </div>
     </div>
@@ -442,6 +519,9 @@
             <div class="avatar-circle large" id="profileAvatar">T</div>
             <div class="profile-info">
               <p class="profile-name" id="profileName">Nama Pengguna</p>
+              <span class="provider-badge local" id="profileProvider"
+                >🔑 Akun TripMate</span
+              >
               <p class="profile-detail">
                 <b>Email:</b> <span id="profileEmail">-</span>
               </p>
