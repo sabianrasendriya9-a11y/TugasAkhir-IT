@@ -1008,7 +1008,7 @@ function renderDashboard() {
     : 0;
   document.getElementById("statPacking").textContent = packingPct + "%";
   document.getElementById("statGps").textContent = lastLocation
-    ? "Aktif"
+    ? `Aktif (±${Math.round(lastLocation.accuracy || 0)}m)`
     : "Nonaktif";
 
   // Perjalanan aktif (list semua trip sebagai card menarik)
@@ -1027,19 +1027,16 @@ function renderDashboard() {
   // Lokasi pengguna
   const locBox = document.getElementById("userLocationBox");
   if (lastLocation) {
-    locBox.innerHTML = `
-      <div class="location-active">
-        <span class="loc-badge">📡 Lokasi Aktif</span>
-        <p class="location-coords">Lat: ${lastLocation.lat.toFixed(5)}, Lon: ${lastLocation.lon.toFixed(5)}</p>
-        <button class="btn btn-secondary btn-sm" id="btnDetectLocationDash2">Perbarui Lokasi</button>
-      </div>`;
-    document
-      .getElementById("btnDetectLocationDash2")
-      .addEventListener("click", detectLocation);
+    locBox.innerHTML = buildLocationStatusHTML(
+      lastLocation,
+      "btnDetectLocationDash2",
+      "🔄 Perbarui Lokasi",
+    );
+    wireLocationStatusButtons(locBox, lastLocation, "btnDetectLocationDash2");
   } else {
     locBox.innerHTML = `
       <p class="empty-text">Lokasi belum dideteksi.</p>
-      <button class="btn btn-secondary btn-sm" id="btnDetectLocationDash">Deteksi Lokasi Saya</button>`;
+      <button class="btn btn-secondary btn-sm btn-detect-location" id="btnDetectLocationDash">📍 Deteksi Lokasi Saya</button>`;
     document
       .getElementById("btnDetectLocationDash")
       .addEventListener("click", detectLocation);
@@ -2246,19 +2243,92 @@ function isInsideIndonesia(lat, lon) {
   );
 }
 
+/* ============ WAKTU RELATIF ("3 menit yang lalu") ============ */
+function formatRelativeTime(timestamp) {
+  const diffSec = Math.floor((Date.now() - timestamp) / 1000);
+  if (diffSec < 10) return "baru saja";
+  if (diffSec < 60) return `${diffSec} detik yang lalu`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} menit yang lalu`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour} jam yang lalu`;
+  const diffDay = Math.floor(diffHour / 24);
+  return `${diffDay} hari yang lalu`;
+}
+
+/* ============ KUALITAS AKURASI GPS ============ */
+function getAccuracyInfo(accuracy) {
+  if (accuracy == null)
+    return { label: "Akurasi tidak diketahui", cls: "unknown" };
+  if (accuracy <= 20)
+    return { label: `Sangat akurat (±${Math.round(accuracy)} m)`, cls: "good" };
+  if (accuracy <= 100)
+    return {
+      label: `Cukup akurat (±${Math.round(accuracy)} m)`,
+      cls: "medium",
+    };
+  return { label: `Akurasi rendah (±${Math.round(accuracy)} m)`, cls: "poor" };
+}
+
+/* ============ REVERSE GEOCODING (koordinat → nama tempat) ============
+   Memakai Nominatim (OpenStreetMap) untuk mengubah lat/lon menjadi nama
+   kecamatan/kota yang mudah dibaca, dengan bahasa Indonesia bila tersedia. */
+async function reverseGeocode(lat, lon) {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=14&accept-language=id`,
+    );
+    if (!res.ok) throw new Error("reverse geocode failed");
+    const data = await res.json();
+    const a = data.address || {};
+    const parts = [
+      a.suburb || a.village || a.town || a.city_district,
+      a.city || a.town || a.regency || a.county,
+      a.state,
+    ].filter(Boolean);
+    // Hilangkan duplikat berurutan (mis. kecamatan sama dengan nama kota)
+    const unique = parts.filter((p, i) => p !== parts[i - 1]);
+    return unique.length ? unique.join(", ") : data.display_name || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/* ============ STATUS TOMBOL DETEKSI LOKASI (loading state) ============ */
+let isDetectingLocation = false;
+function setLocationButtonsLoading(loading) {
+  isDetectingLocation = loading;
+  document.querySelectorAll(".btn-detect-location").forEach((btn) => {
+    btn.disabled = loading;
+    if (loading) {
+      btn.dataset.originalText = btn.dataset.originalText || btn.innerHTML;
+      btn.innerHTML = '<span class="btn-spinner"></span> Mendeteksi lokasi...';
+    } else if (btn.dataset.originalText) {
+      btn.innerHTML = btn.dataset.originalText;
+    }
+  });
+}
+
 function detectLocation() {
+  if (isDetectingLocation) return; // cegah klik ganda saat masih memproses
+
   if (!navigator.geolocation) {
     showToast("Browser kamu tidak mendukung fitur lokasi.", "error");
     return;
   }
+
+  setLocationButtonsLoading(true);
   showToast("Meminta izin akses lokasi...", "info", "📡");
+
   navigator.geolocation.getCurrentPosition(
-    (position) => {
+    async (position) => {
       const lat = position.coords.latitude;
       const lon = position.coords.longitude;
+      const accuracy = position.coords.accuracy;
 
       // Fitur deteksi lokasi hanya berlaku untuk pengguna yang berada di wilayah Indonesia
       if (!isInsideIndonesia(lat, lon)) {
+        setLocationButtonsLoading(false);
         showToast(
           "Fitur deteksi lokasi hanya tersedia untuk pengguna di Indonesia.",
           "error",
@@ -2268,21 +2338,79 @@ function detectLocation() {
         return;
       }
 
-      lsSet(LS_KEYS.LAST_LOCATION, { lat, lon, timestamp: Date.now() });
-      showToast("Lokasi berhasil ditemukan!", "success", "📍");
+      // Simpan lokasi dulu (tanpa alamat), supaya UI responsif tanpa menunggu reverse geocoding
+      lsSet(LS_KEYS.LAST_LOCATION, {
+        lat,
+        lon,
+        accuracy,
+        address: null,
+        timestamp: Date.now(),
+      });
       renderDashboard();
       renderPlacesStatus();
       fetchNearbyPlaces(lat, lon);
+
+      const accInfo = getAccuracyInfo(accuracy);
+      showToast(`Lokasi berhasil ditemukan! ${accInfo.label}`, "success", "📍");
+      setLocationButtonsLoading(false);
+
+      // Lengkapi dengan nama tempat (kecamatan/kota) secara asinkron
+      const address = await reverseGeocode(lat, lon);
+      if (address) {
+        const current = lsGet(LS_KEYS.LAST_LOCATION, null);
+        if (current) {
+          lsSet(LS_KEYS.LAST_LOCATION, { ...current, address });
+          renderDashboard();
+          renderPlacesStatus();
+        }
+      }
     },
     (error) => {
-      showToast(
-        "Izin lokasi ditolak atau gagal mendapatkan lokasi.",
-        "error",
-        "🚫",
-      );
+      setLocationButtonsLoading(false);
+      // Pesan disesuaikan dengan jenis error dari browser
+      switch (error.code) {
+        case error.PERMISSION_DENIED:
+          showToast(
+            "Izin lokasi ditolak. Aktifkan izin lokasi di pengaturan browser untuk memakai fitur ini.",
+            "error",
+            "🚫",
+          );
+          break;
+        case error.POSITION_UNAVAILABLE:
+          showToast(
+            "Lokasi tidak dapat ditentukan saat ini. Pastikan GPS/lokasi perangkat aktif.",
+            "error",
+            "📵",
+          );
+          break;
+        case error.TIMEOUT:
+          showToast(
+            "Waktu deteksi lokasi habis. Periksa sinyal GPS dan coba lagi.",
+            "error",
+            "⏱️",
+          );
+          break;
+        default:
+          showToast(
+            "Gagal mendapatkan lokasi. Silakan coba lagi.",
+            "error",
+            "🚫",
+          );
+      }
     },
-    { enableHighAccuracy: true, timeout: 12000 },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
   );
+}
+
+// Salin koordinat ke clipboard
+async function copyCoordinates(lat, lon) {
+  const text = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast("Koordinat disalin ke clipboard.", "success", "📋");
+  } catch (e) {
+    showToast("Gagal menyalin koordinat.", "error");
+  }
 }
 
 // Tampilkan pesan khusus di halaman Tempat Sekitar jika lokasi pengguna di luar Indonesia
@@ -2296,6 +2424,45 @@ function renderPlacesStatusOutsideIndonesia() {
   if (grid) grid.innerHTML = "";
 }
 
+// Bangun blok HTML kartu status lokasi (dipakai bersama oleh dashboard & halaman Tempat Sekitar)
+function buildLocationStatusHTML(loc, detectBtnId, detectBtnLabel) {
+  const accInfo = getAccuracyInfo(loc.accuracy);
+  return `
+    <div class="location-active">
+      <div class="location-radar"><span class="radar-dot"></span></div>
+      <span class="loc-badge">📡 Lokasi Aktif</span>
+      ${loc.address ? `<p class="location-address">${escapeHtml(loc.address)}</p>` : '<p class="location-address muted">Mencari nama tempat...</p>'}
+      <p class="location-coords">Lat: ${loc.lat.toFixed(5)}, Lon: ${loc.lon.toFixed(5)}</p>
+      <span class="accuracy-badge ${accInfo.cls}">${accInfo.label}</span>
+      <p class="location-updated">🕒 Diperbarui ${formatRelativeTime(loc.timestamp)}</p>
+      <div class="location-actions">
+        <button class="btn btn-secondary btn-sm btn-detect-location" id="${detectBtnId}">${detectBtnLabel}</button>
+        <button class="btn btn-secondary btn-sm" data-action="copy-coords">📋 Salin</button>
+        <button class="btn btn-secondary btn-sm" data-action="open-maps">🗺️ Google Maps</button>
+      </div>
+    </div>
+  `;
+}
+
+// Pasang event listener tombol-tombol pada kartu status lokasi
+function wireLocationStatusButtons(container, loc, detectBtnId) {
+  const detectBtn = container.querySelector("#" + detectBtnId);
+  if (detectBtn) detectBtn.addEventListener("click", detectLocation);
+
+  const copyBtn = container.querySelector('[data-action="copy-coords"]');
+  if (copyBtn)
+    copyBtn.addEventListener("click", () => copyCoordinates(loc.lat, loc.lon));
+
+  const mapsBtn = container.querySelector('[data-action="open-maps"]');
+  if (mapsBtn)
+    mapsBtn.addEventListener("click", () => {
+      window.open(
+        `https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lon}`,
+        "_blank",
+      );
+    });
+}
+
 function renderPlacesStatus() {
   const box = document.getElementById("placesStatusBox");
   const loc = lsGet(LS_KEYS.LAST_LOCATION, null);
@@ -2304,12 +2471,12 @@ function renderPlacesStatus() {
       '<p class="empty-text">Aktifkan lokasi untuk menemukan tempat menarik di sekitarmu.</p>';
     return;
   }
-  box.innerHTML = `
-    <div class="location-active">
-      <span class="loc-badge">📡 Lokasi Aktif</span>
-      <p class="location-coords">Lat: ${loc.lat.toFixed(5)}, Lon: ${loc.lon.toFixed(5)} · diperbarui ${new Date(loc.timestamp).toLocaleTimeString("id-ID")}</p>
-    </div>
-  `;
+  box.innerHTML = buildLocationStatusHTML(
+    loc,
+    "btnRefreshLocationPlaces",
+    "🔄 Perbarui Lokasi",
+  );
+  wireLocationStatusButtons(box, loc, "btnRefreshLocationPlaces");
 }
 
 // Tampilkan data kurasi kota (semua kota atau kota terpilih) secara default, tanpa perlu deteksi lokasi dulu
@@ -2793,9 +2960,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document
     .getElementById("btnNewTripDash")
     .addEventListener("click", () => openModal("modalTrip"));
-  document
-    .getElementById("btnDetectLocationDash")
-    ?.addEventListener("click", detectLocation);
+  // Catatan: tombol deteksi lokasi di dashboard sudah dipasang otomatis oleh renderDashboard()
 
   /* ---------- MODAL: TRIP BARU ---------- */
   document.getElementById("formTrip").addEventListener("submit", (e) => {
