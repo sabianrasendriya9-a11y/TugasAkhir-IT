@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TripMate — Smart Trip Planner</title>
     <link rel="stylesheet" href="style.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"
+    />
     <!-- Library resmi Google Identity Services untuk tombol "Masuk dengan Google" -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
@@ -444,9 +448,11 @@
           >
             📌 Menampilkan data kurasi tempat per kota, digabung dengan tempat
             sekitar dari OpenStreetMap saat lokasi aktif. Koordinat tempat
-            kurasi bersifat perkiraan. Tombol "Lihat Peta" akan membuka Google
-            Maps.
+            kurasi bersifat perkiraan, jadi tombol "Lihat di Google Maps"
+            mencari lewat nama &amp; alamat tempat. Hasil OpenStreetMap memakai
+            koordinat asli.
           </p>
+          <div id="placesMapWrap"></div>
           <div id="placesGrid" class="places-grid"></div>
         </section>
 
@@ -782,6 +788,8 @@
       </div>
     </div>
 
+    <!-- Leaflet harus dimuat SEBELUM script.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
     <script src="script.js"></script>
   </body>
 </html>

@@ -1,7 +1,6 @@
 /* =============================================================
-   TripMate — script.js
-   Aplikasi Smart Trip Planner (murni JavaScript, tanpa framework)
-   Semua data disimpan di localStorage (tidak ada backend/database)
+   TripMate — script.js  (versi gabungan + perbaikan lokasi)
+   Aplikasi Smart Trip Planner (JavaScript murni, data di localStorage)
    ============================================================= */
 
 /* ============ KUNCI LOCALSTORAGE ============ */
@@ -23,8 +22,7 @@ const LS_KEYS = {
 function lsGet(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
-    if (raw === null) return fallback;
-    return JSON.parse(raw);
+    return raw === null ? fallback : JSON.parse(raw);
   } catch (e) {
     return fallback;
   }
@@ -38,35 +36,30 @@ function uid() {
 
 /* ============ HELPER: FORMAT ============ */
 function formatRupiah(num) {
-  num = Number(num) || 0;
-  return "Rp " + num.toLocaleString("id-ID");
+  return "Rp " + (Number(num) || 0).toLocaleString("id-ID");
 }
 function formatDate(dateStr) {
   if (!dateStr) return "-";
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("id-ID", {
+  return new Date(dateStr).toLocaleDateString("id-ID", {
     day: "numeric",
     month: "short",
     year: "numeric",
   });
 }
 function formatDistance(meters) {
-  if (meters < 1000) return Math.round(meters) + " m";
-  return (meters / 1000).toFixed(1) + " km";
+  return meters < 1000
+    ? Math.round(meters) + " m"
+    : (meters / 1000).toFixed(1) + " km";
 }
 function haversineDistance(lat1, lon1, lat2, lon2) {
   const R = 6371000;
-  const toRad = (deg) => (deg * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
+  const rad = (d) => (d * Math.PI) / 180;
+  const dLat = rad(lat2 - lat1);
+  const dLon = rad(lon2 - lon1);
   const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 /* ============ TOAST NOTIFICATION ============ */
@@ -92,43 +85,22 @@ function closeModal(id) {
   document.getElementById(id).classList.add("hidden");
 }
 document.addEventListener("click", (e) => {
-  if (e.target.classList.contains("modal-overlay")) {
+  if (e.target.classList.contains("modal-overlay"))
     e.target.classList.add("hidden");
-  }
-  if (e.target.dataset && e.target.dataset.close) {
+  if (e.target.dataset && e.target.dataset.close)
     closeModal(e.target.dataset.close);
-  }
 });
 
 /* =============================================================
    AUTENTIKASI
-   -------------------------------------------------------------
-   Dua cara masuk:
-   1. GOOGLE SIGN-IN (OAuth resmi) — pengguna login di halaman Google.
-      Password Google TIDAK PERNAH masuk ke aplikasi ini. Google mengirim
-      balik token berisi nama + email yang sudah terverifikasi oleh Google.
-   2. AKUN TRIPMATE — email + password milik aplikasi ini sendiri,
-      divalidasi ketat dan disimpan sebagai hash di localStorage.
-
-   CATATAN PENTING soal keamanan:
-   Aplikasi ini tanpa backend, jadi hash password tersimpan di browser
-   pengguna. Ini cukup untuk tugas/demo, TAPI bukan keamanan tingkat
-   produksi. Jangan pernah memakai password asli Google/bank di sini.
+   1. Google Sign-In (OAuth resmi) — password Google tidak pernah masuk ke app.
+   2. Akun TripMate — email + password lokal, disimpan sebagai hash.
+   CATATAN: tanpa backend, hash tersimpan di browser. Cukup untuk tugas/demo,
+   bukan keamanan produksi. Jangan pakai password asli Google/bank di sini.
    ============================================================= */
-
-/* ---------- KONFIGURASI GOOGLE SIGN-IN ----------
-   Isi CLIENT_ID dengan OAuth Client ID milikmu dari Google Cloud Console:
-   1. Buka https://console.cloud.google.com/apis/credentials
-   2. Create Credentials → OAuth client ID → Web application
-   3. Tambahkan "Authorized JavaScript origins", misalnya http://localhost:5500
-   4. Salin Client ID-nya ke bawah ini.
-   Google Sign-In HANYA bekerja saat halaman dibuka lewat http/https
-   (contoh: Live Server VS Code), tidak bisa lewat file:// */
-const GOOGLE_CLIENT_ID = ""; // <-- isi dengan Client ID milikmu
+const GOOGLE_CLIENT_ID = ""; // <-- isi dengan OAuth Client ID milikmu
 
 /* ---------- VALIDASI EMAIL ---------- */
-// Daftar domain email yang diterima. Salah ketik domain (gmial.com, gmail.co)
-// akan langsung ditolak sebelum pengguna bisa mendaftar/login.
 const ALLOWED_EMAIL_DOMAINS = [
   "gmail.com",
   "googlemail.com",
@@ -140,8 +112,6 @@ const ALLOWED_EMAIL_DOMAINS = [
   "icloud.com",
   "proton.me",
 ];
-
-// Salah ketik domain yang umum → beri saran perbaikan, bukan sekadar ditolak
 const DOMAIN_TYPOS = {
   "gmial.com": "gmail.com",
   "gmai.com": "gmail.com",
@@ -158,10 +128,8 @@ const DOMAIN_TYPOS = {
 
 function validateEmail(email) {
   email = (email || "").trim().toLowerCase();
-
   if (!email) return { valid: false, message: "Email wajib diisi." };
 
-  // Format dasar email: ada nama, @, domain, dan ekstensi
   const formatRegex =
     /^[a-z0-9]([a-z0-9._%+-]*[a-z0-9])?@[a-z0-9.-]+\.[a-z]{2,}$/;
   if (!formatRegex.test(email)) {
@@ -172,16 +140,12 @@ function validateEmail(email) {
   }
 
   const domain = email.split("@")[1];
-
-  // Cek salah ketik domain yang umum
   if (DOMAIN_TYPOS[domain]) {
     return {
       valid: false,
       message: `Domain "${domain}" tidak valid. Maksud kamu "@${DOMAIN_TYPOS[domain]}"?`,
     };
   }
-
-  // Hanya domain penyedia email yang dikenal yang diterima
   if (!ALLOWED_EMAIL_DOMAINS.includes(domain)) {
     return {
       valid: false,
@@ -189,39 +153,29 @@ function validateEmail(email) {
     };
   }
 
-  // Aturan khusus Gmail: minimal 6 karakter sebelum @, hanya huruf/angka/titik
   if (domain === "gmail.com" || domain === "googlemail.com") {
-    const localPart = email.split("@")[0];
-    if (localPart.length < 6) {
+    const local = email.split("@")[0];
+    if (local.length < 6)
       return {
         valid: false,
         message: "Alamat Gmail minimal 6 karakter sebelum tanda @.",
       };
-    }
-    if (!/^[a-z0-9.]+$/.test(localPart)) {
+    if (!/^[a-z0-9.]+$/.test(local))
       return {
         valid: false,
         message: "Alamat Gmail hanya boleh berisi huruf, angka, dan titik.",
       };
-    }
-    if (
-      localPart.startsWith(".") ||
-      localPart.endsWith(".") ||
-      localPart.includes("..")
-    ) {
+    if (local.startsWith(".") || local.endsWith(".") || local.includes(".."))
       return {
         valid: false,
         message:
           "Alamat Gmail tidak boleh diawali/diakhiri titik atau punya titik ganda.",
       };
-    }
   }
-
   return { valid: true, email };
 }
 
 /* ---------- VALIDASI PASSWORD ---------- */
-// Password yang terlalu umum langsung ditolak
 const COMMON_PASSWORDS = [
   "password",
   "password123",
@@ -235,60 +189,43 @@ const COMMON_PASSWORDS = [
   "iloveyou",
 ];
 
-function validatePassword(password) {
-  if (!password) return { valid: false, message: "Password wajib diisi." };
-  if (password.length < 8)
-    return { valid: false, message: "Password minimal 8 karakter." };
-  if (password.length > 64)
-    return { valid: false, message: "Password maksimal 64 karakter." };
-  if (!/[A-Z]/.test(password))
-    return {
-      valid: false,
-      message: "Password harus mengandung minimal 1 huruf besar.",
-    };
-  if (!/[a-z]/.test(password))
-    return {
-      valid: false,
-      message: "Password harus mengandung minimal 1 huruf kecil.",
-    };
-  if (!/[0-9]/.test(password))
-    return {
-      valid: false,
-      message: "Password harus mengandung minimal 1 angka.",
-    };
-  if (/\s/.test(password))
-    return { valid: false, message: "Password tidak boleh mengandung spasi." };
-  if (COMMON_PASSWORDS.includes(password.toLowerCase())) {
-    return {
-      valid: false,
-      message: "Password terlalu umum dan mudah ditebak. Gunakan yang lain.",
-    };
-  }
+function validatePassword(p) {
+  const fail = (message) => ({ valid: false, message });
+  if (!p) return fail("Password wajib diisi.");
+  if (p.length < 8) return fail("Password minimal 8 karakter.");
+  if (p.length > 64) return fail("Password maksimal 64 karakter.");
+  if (!/[A-Z]/.test(p))
+    return fail("Password harus mengandung minimal 1 huruf besar.");
+  if (!/[a-z]/.test(p))
+    return fail("Password harus mengandung minimal 1 huruf kecil.");
+  if (!/[0-9]/.test(p))
+    return fail("Password harus mengandung minimal 1 angka.");
+  if (/\s/.test(p)) return fail("Password tidak boleh mengandung spasi.");
+  if (COMMON_PASSWORDS.includes(p.toLowerCase()))
+    return fail("Password terlalu umum dan mudah ditebak. Gunakan yang lain.");
   return { valid: true };
 }
 
-// Hitung kekuatan password untuk indikator visual (0–100)
-function passwordStrength(password) {
+function passwordStrength(p) {
   let score = 0;
-  if (password.length >= 8) score += 25;
-  if (password.length >= 12) score += 15;
-  if (/[A-Z]/.test(password)) score += 15;
-  if (/[a-z]/.test(password)) score += 15;
-  if (/[0-9]/.test(password)) score += 15;
-  if (/[^A-Za-z0-9]/.test(password)) score += 15;
+  if (p.length >= 8) score += 25;
+  if (p.length >= 12) score += 15;
+  if (/[A-Z]/.test(p)) score += 15;
+  if (/[a-z]/.test(p)) score += 15;
+  if (/[0-9]/.test(p)) score += 15;
+  if (/[^A-Za-z0-9]/.test(p)) score += 15;
   return Math.min(100, score);
 }
 
 /* ---------- HASHING PASSWORD ---------- */
-// Password tidak disimpan apa adanya, melainkan sebagai hash.
-// Memakai Web Crypto (SHA-256) bila tersedia; kalau halaman dibuka lewat
-// file:// (Web Crypto dimatikan browser), pakai hash cadangan sederhana.
 async function hashPassword(password) {
   const salted = "tripmate$" + password;
   if (window.crypto && window.crypto.subtle) {
     try {
-      const data = new TextEncoder().encode(salted);
-      const digest = await window.crypto.subtle.digest("SHA-256", data);
+      const digest = await window.crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(salted),
+      );
       return (
         "sha256:" +
         Array.from(new Uint8Array(digest))
@@ -296,10 +233,9 @@ async function hashPassword(password) {
           .join("")
       );
     } catch (e) {
-      /* lanjut ke cadangan di bawah */
+      /* lanjut ke cadangan */
     }
   }
-  // Hash cadangan (bukan kriptografi kuat, hanya agar tidak tersimpan polos)
   let h1 = 0x811c9dc5,
     h2 = 0x01000193;
   for (let i = 0; i < salted.length; i++) {
@@ -317,11 +253,8 @@ function saveAccounts(accounts) {
   lsSet(LS_KEYS.ACCOUNTS, accounts);
 }
 function findAccount(email) {
-  return (
-    getAccounts().find(
-      (a) => a.email.toLowerCase() === (email || "").trim().toLowerCase(),
-    ) || null
-  );
+  const target = (email || "").trim().toLowerCase();
+  return getAccounts().find((a) => a.email.toLowerCase() === target) || null;
 }
 
 /* ---------- HELPER TAMPILAN ERROR ---------- */
@@ -356,12 +289,11 @@ function clearAllAuthErrors() {
   });
 }
 
-/* ---------- MASUK KE APLIKASI SETELAH AUTENTIKASI BERHASIL ---------- */
+/* ---------- MASUK KE APLIKASI SETELAH AUTENTIKASI ---------- */
 function completeLogin(userProfile, welcomeMessage) {
   lsSet(LS_KEYS.USER, userProfile);
   lsSet(LS_KEYS.SESSION, userProfile.email);
 
-  // Seed packing list default untuk pengguna baru
   if (!lsGet(LS_KEYS.PACKING, null)) {
     const defaults = [
       "Pakaian",
@@ -376,17 +308,13 @@ function completeLogin(userProfile, welcomeMessage) {
       defaults.map((name) => ({ id: uid(), name, checked: false })),
     );
   }
-
   showToast(welcomeMessage, "success", "🎉");
   startApp();
 }
 
 /* =============================================================
-   GOOGLE SIGN-IN (OAuth resmi Google)
+   GOOGLE SIGN-IN
    ============================================================= */
-
-// Membaca isi token JWT dari Google (bagian payload-nya saja, tanpa verifikasi
-// tanda tangan — verifikasi penuh memerlukan server).
 function parseGoogleToken(credential) {
   try {
     const payload = credential
@@ -405,27 +333,21 @@ function parseGoogleToken(credential) {
   }
 }
 
-// Dipanggil otomatis oleh Google setelah pengguna berhasil login di Google
 function handleGoogleCredential(response) {
   const data = parseGoogleToken(response.credential);
-
   if (!data || !data.email) {
     showToast("Gagal membaca data akun Google.", "error");
     return;
   }
-
-  // Google menandai apakah email tersebut sudah terverifikasi kepemilikannya
   if (data.email_verified === false) {
     showToast("Akun Google ini belum terverifikasi oleh Google.", "error");
     return;
   }
 
-  // Simpan/gabungkan sebagai akun bertipe Google (tanpa password lokal)
   const accounts = getAccounts();
   let account = accounts.find(
     (a) => a.email.toLowerCase() === data.email.toLowerCase(),
   );
-
   if (!account) {
     account = {
       name: data.name || data.email.split("@")[0],
@@ -452,33 +374,27 @@ function handleGoogleCredential(response) {
   );
 }
 
-// Tampilkan tombol Google, atau pesan penjelasan bila belum dikonfigurasi
 function initGoogleSignIn() {
   const container = document.getElementById("googleBtnContainer");
   const hint = document.getElementById("googleHint");
   if (!container) return;
+  const warn = (html) => {
+    hint.className = "google-hint warn";
+    hint.innerHTML = html;
+  };
 
-  const isHttp =
-    location.protocol === "http:" || location.protocol === "https:";
-
-  if (!GOOGLE_CLIENT_ID) {
-    hint.className = "google-hint warn";
-    hint.innerHTML =
-      "⚙️ <b>Login Google belum aktif.</b> Isi <code>GOOGLE_CLIENT_ID</code> di script.js dengan OAuth Client ID dari Google Cloud Console untuk mengaktifkannya. Sementara itu, gunakan akun TripMate di bawah.";
-    return;
-  }
-  if (!isHttp) {
-    hint.className = "google-hint warn";
-    hint.innerHTML =
-      "⚙️ <b>Login Google butuh server.</b> Buka halaman ini lewat http:// (misalnya Live Server VS Code), bukan file://. Sementara itu, gunakan akun TripMate di bawah.";
-    return;
-  }
-  if (!window.google || !window.google.accounts) {
-    hint.className = "google-hint warn";
-    hint.textContent =
-      "⚙️ Library Google gagal dimuat. Periksa koneksi internet kamu.";
-    return;
-  }
+  if (!GOOGLE_CLIENT_ID)
+    return warn(
+      "⚙️ <b>Login Google belum aktif.</b> Isi <code>GOOGLE_CLIENT_ID</code> di script.js dengan OAuth Client ID dari Google Cloud Console untuk mengaktifkannya. Sementara itu, gunakan akun TripMate di bawah.",
+    );
+  if (!(location.protocol === "http:" || location.protocol === "https:"))
+    return warn(
+      "⚙️ <b>Login Google butuh server.</b> Buka halaman ini lewat http:// (misalnya Live Server VS Code), bukan file://. Sementara itu, gunakan akun TripMate di bawah.",
+    );
+  if (!window.google || !window.google.accounts)
+    return warn(
+      "⚙️ Library Google gagal dimuat. Periksa koneksi internet kamu.",
+    );
 
   try {
     window.google.accounts.id.initialize({
@@ -494,9 +410,9 @@ function initGoogleSignIn() {
       locale: "id",
     });
   } catch (e) {
-    hint.className = "google-hint warn";
-    hint.textContent =
-      "⚙️ Gagal menampilkan tombol Google. Periksa Client ID dan Authorized JavaScript origins.";
+    warn(
+      "⚙️ Gagal menampilkan tombol Google. Periksa Client ID dan Authorized JavaScript origins.",
+    );
   }
 }
 
@@ -506,7 +422,7 @@ function initGoogleSignIn() {
 function initAuthPage() {
   clearAllAuthErrors();
 
-  // Coba tampilkan tombol Google (library dimuat async, jadi dicoba beberapa kali)
+  // Library Google dimuat async, jadi dicoba beberapa kali
   let googleTries = 0;
   const googleTimer = setInterval(() => {
     googleTries++;
@@ -520,7 +436,7 @@ function initAuthPage() {
     }
   }, 300);
 
-  // --- Perpindahan tab Masuk / Daftar ---
+  // --- Tab Masuk / Daftar ---
   document.querySelectorAll(".auth-tab").forEach((tab) => {
     tab.onclick = () => {
       document
@@ -544,7 +460,7 @@ function initAuthPage() {
         .click();
   });
 
-  // --- Tombol lihat/sembunyikan password ---
+  // --- Lihat/sembunyikan password ---
   document.querySelectorAll(".toggle-pass").forEach((btn) => {
     btn.onclick = () => {
       const input = document.getElementById(btn.dataset.target);
@@ -554,7 +470,7 @@ function initAuthPage() {
     };
   });
 
-  // --- Indikator kekuatan password saat mengetik ---
+  // --- Indikator kekuatan password ---
   const regPassword = document.getElementById("regPassword");
   regPassword.oninput = () => {
     const score = passwordStrength(regPassword.value);
@@ -565,7 +481,7 @@ function initAuthPage() {
     clearFieldError("errRegPassword", "regPassword");
   };
 
-  // Hapus tanda error begitu pengguna memperbaiki isian
+  // Hapus tanda error saat isian diperbaiki
   [
     ["loginEmail", "errLoginEmail"],
     ["loginPassword", "errLoginPassword"],
@@ -583,19 +499,15 @@ function initAuthPage() {
   document.getElementById("loginForm").onsubmit = async (e) => {
     e.preventDefault();
     clearAllAuthErrors();
-
     const emailInput = document.getElementById("loginEmail").value;
     const password = document.getElementById("loginPassword").value;
 
-    // 1. Email harus valid formatnya — kalau salah, tidak bisa login
     const emailCheck = validateEmail(emailInput);
     if (!emailCheck.valid) {
       showFieldError("errLoginEmail", "loginEmail", emailCheck.message);
       showToast("Email tidak valid.", "error");
       return;
     }
-
-    // 2. Akun harus sudah terdaftar
     const account = findAccount(emailCheck.email);
     if (!account) {
       showFieldError(
@@ -606,8 +518,6 @@ function initAuthPage() {
       showToast("Akun tidak ditemukan.", "error");
       return;
     }
-
-    // 3. Akun Google harus masuk lewat tombol Google
     if (account.provider === "google") {
       showFieldError(
         "errLoginEmail",
@@ -617,10 +527,7 @@ function initAuthPage() {
       showToast("Gunakan login Google untuk akun ini.", "error");
       return;
     }
-
-    // 4. Password harus cocok — kalau salah, tidak bisa login
-    const inputHash = await hashPassword(password);
-    if (inputHash !== account.passwordHash) {
+    if ((await hashPassword(password)) !== account.passwordHash) {
       showFieldError(
         "errLoginPassword",
         "loginPassword",
@@ -629,7 +536,6 @@ function initAuthPage() {
       showToast("Password salah.", "error", "🔒");
       return;
     }
-
     completeLogin(
       {
         name: account.name,
@@ -646,77 +552,54 @@ function initAuthPage() {
   document.getElementById("registerForm").onsubmit = async (e) => {
     e.preventDefault();
     clearAllAuthErrors();
-
     const name = document.getElementById("regName").value.trim();
     const emailInput = document.getElementById("regEmail").value;
     const password = document.getElementById("regPassword").value;
     const password2 = document.getElementById("regPassword2").value;
     const phone = document.getElementById("regPhone").value.trim();
     const address = document.getElementById("regAddress").value.trim();
-
     let hasError = false;
-
-    // 1. Nama minimal 3 karakter
-    if (name.length < 3) {
-      showFieldError(
-        "errRegName",
-        "regName",
-        "Nama lengkap minimal 3 karakter.",
-      );
+    const fail = (errId, inputId, msg) => {
+      showFieldError(errId, inputId, msg);
       hasError = true;
-    }
+    };
 
-    // 2. Email harus valid — salah format/domain langsung ditolak
+    if (name.length < 3)
+      fail("errRegName", "regName", "Nama lengkap minimal 3 karakter.");
+
     const emailCheck = validateEmail(emailInput);
-    if (!emailCheck.valid) {
-      showFieldError("errRegEmail", "regEmail", emailCheck.message);
-      hasError = true;
-    } else if (findAccount(emailCheck.email)) {
-      showFieldError(
+    if (!emailCheck.valid) fail("errRegEmail", "regEmail", emailCheck.message);
+    else if (findAccount(emailCheck.email))
+      fail(
         "errRegEmail",
         "regEmail",
         "Email ini sudah terdaftar. Silakan masuk.",
       );
-      hasError = true;
-    }
 
-    // 3. Password harus memenuhi syarat keamanan
     const passCheck = validatePassword(password);
-    if (!passCheck.valid) {
-      showFieldError("errRegPassword", "regPassword", passCheck.message);
-      hasError = true;
-    }
-
-    // 4. Konfirmasi password harus sama
-    if (password !== password2) {
-      showFieldError(
+    if (!passCheck.valid)
+      fail("errRegPassword", "regPassword", passCheck.message);
+    if (password !== password2)
+      fail(
         "errRegPassword2",
         "regPassword2",
         "Konfirmasi password tidak cocok.",
       );
-      hasError = true;
-    }
 
-    // 5. Nomor HP Indonesia: 08xxx / +628xxx / 628xxx, 10–15 digit
+    // Nomor HP Indonesia: 08xxx / +628xxx / 628xxx
     const phoneClean = phone.replace(/[\s-]/g, "");
-    if (!/^(\+62|62|0)8[1-9][0-9]{6,11}$/.test(phoneClean)) {
-      showFieldError(
+    if (!/^(\+62|62|0)8[1-9][0-9]{6,11}$/.test(phoneClean))
+      fail(
         "errRegPhone",
         "regPhone",
         "Nomor HP tidak valid. Gunakan format 08xxxxxxxxxx.",
       );
-      hasError = true;
-    }
-
-    // 6. Alamat minimal 10 karakter
-    if (address.length < 10) {
-      showFieldError(
+    if (address.length < 10)
+      fail(
         "errRegAddress",
         "regAddress",
         "Alamat terlalu singkat, minimal 10 karakter.",
       );
-      hasError = true;
-    }
 
     if (hasError) {
       showToast(
@@ -726,7 +609,6 @@ function initAuthPage() {
       return;
     }
 
-    // Semua valid → simpan akun beserta hash password-nya
     const accounts = getAccounts();
     accounts.push({
       name,
@@ -738,7 +620,6 @@ function initAuthPage() {
       createdAt: Date.now(),
     });
     saveAccounts(accounts);
-
     e.target.reset();
     document.getElementById("passStrengthFill").style.width = "0%";
 
@@ -757,14 +638,11 @@ function initAuthPage() {
 
 function logout() {
   lsSet(LS_KEYS.SESSION, null);
-
-  // Putus sesi otomatis Google agar tidak langsung login ulang
   if (window.google && window.google.accounts && GOOGLE_CLIENT_ID) {
     try {
       window.google.accounts.id.disableAutoSelect();
     } catch (e) {}
   }
-
   showToast("Kamu telah logout. Sampai jumpa lagi!", "info", "🚪");
   document.getElementById("appShell").classList.add("hidden");
   document.getElementById("authPage").classList.remove("hidden");
@@ -779,7 +657,6 @@ function logout() {
 function startApp() {
   document.getElementById("authPage").classList.add("hidden");
   document.getElementById("appShell").classList.remove("hidden");
-
   applyDarkMode();
   cleanupOldTrips();
   renderProfile();
@@ -794,31 +671,28 @@ function startApp() {
 
 /* ============ DARK MODE ============ */
 function applyDarkMode() {
-  const isDark = lsGet(LS_KEYS.DARKMODE, false);
   document.documentElement.setAttribute(
     "data-theme",
-    isDark ? "dark" : "light",
+    lsGet(LS_KEYS.DARKMODE, false) ? "dark" : "light",
   );
 }
 function toggleDarkMode() {
-  const isDark = lsGet(LS_KEYS.DARKMODE, false);
-  lsSet(LS_KEYS.DARKMODE, !isDark);
+  lsSet(LS_KEYS.DARKMODE, !lsGet(LS_KEYS.DARKMODE, false));
   applyDarkMode();
 }
 
-/* ============ NAV USER (Navbar) ============ */
+/* ============ NAV USER ============ */
 function updateNavUser() {
   const user = lsGet(LS_KEYS.USER, { name: "Pengguna" });
-  const initial = user.name.charAt(0).toUpperCase();
-  document.getElementById("navAvatar").textContent = initial;
+  document.getElementById("navAvatar").textContent = user.name
+    .charAt(0)
+    .toUpperCase();
   document.getElementById("navUserName").textContent = user.name;
   document.getElementById("heroGreeting").textContent =
     `Halo, ${user.name.split(" ")[0]} 👋`;
 }
 
-/* =============================================================
-   NAVIGASI ANTAR HALAMAN (DOM manipulation, tanpa reload)
-   ============================================================= */
+/* ============ NAVIGASI ANTAR HALAMAN (tanpa reload) ============ */
 function goToPage(pageName) {
   document
     .querySelectorAll(".page")
@@ -829,7 +703,6 @@ function goToPage(pageName) {
     .forEach((n) => n.classList.remove("active"));
   const navBtn = document.querySelector(`.nav-item[data-page="${pageName}"]`);
   if (navBtn) navBtn.classList.add("active");
-  // Tutup sidebar mobile setelah pindah halaman
   document.getElementById("sidebar").classList.remove("open");
   document.getElementById("sidebarOverlay").classList.remove("show");
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -848,15 +721,13 @@ function renderProfile() {
   document.getElementById("profilePhone").textContent = user.phone || "-";
   document.getElementById("profileAddress").textContent = user.address || "-";
 
-  // Tandai apakah akun berasal dari Google atau akun TripMate biasa
   const badge = document.getElementById("profileProvider");
   if (badge) {
-    badge.textContent =
-      user.provider === "google"
-        ? "🔐 Terhubung dengan Google"
-        : "🔑 Akun TripMate";
-    badge.className =
-      "provider-badge " + (user.provider === "google" ? "google" : "local");
+    const isGoogle = user.provider === "google";
+    badge.textContent = isGoogle
+      ? "🔐 Terhubung dengan Google"
+      : "🔑 Akun TripMate";
+    badge.className = "provider-badge " + (isGoogle ? "google" : "local");
   }
 }
 
@@ -888,41 +759,38 @@ function getTripStatus(trip) {
   return { label: "Berlangsung", cls: "ongoing" };
 }
 
-// Hapus otomatis trip yang sudah selesai lebih dari 7 hari, beserta data terkait
+// Hapus otomatis trip yang selesai lebih dari 7 hari, beserta itinerary & budget terkait
 function cleanupOldTrips() {
-  const trips = getTrips();
-  const today = new Date();
   const toRemove = [];
-  const kept = trips.filter((trip) => {
-    const end = new Date(trip.end);
-    const diffDays = (today - end) / (1000 * 60 * 60 * 24);
+  const kept = getTrips().filter((trip) => {
+    const diffDays = (new Date() - new Date(trip.end)) / (1000 * 60 * 60 * 24);
     if (diffDays > 7) {
       toRemove.push(trip.id);
       return false;
     }
     return true;
   });
+  if (toRemove.length === 0) return;
 
-  if (toRemove.length > 0) {
-    saveTrips(kept);
-    // Bersihkan itinerary & budget yang terkait trip yang dihapus
-    const itinerary = lsGet(LS_KEYS.ITINERARY, []).filter(
-      (i) => !toRemove.includes(i.tripId),
-    );
-    lsSet(LS_KEYS.ITINERARY, itinerary);
-    const budget = lsGet(LS_KEYS.BUDGET, []).filter(
-      (b) => !toRemove.includes(b.tripId),
-    );
-    lsSet(LS_KEYS.BUDGET, budget);
-    showToast(
-      `${toRemove.length} trip lama otomatis dibersihkan.`,
-      "info",
-      "🧹",
-    );
-  }
+  saveTrips(kept);
+  lsSet(
+    LS_KEYS.ITINERARY,
+    lsGet(LS_KEYS.ITINERARY, []).filter((i) => !toRemove.includes(i.tripId)),
+  );
+  lsSet(
+    LS_KEYS.BUDGET,
+    lsGet(LS_KEYS.BUDGET, []).filter((b) => !toRemove.includes(b.tripId)),
+  );
+  showToast(`${toRemove.length} trip lama otomatis dibersihkan.`, "info", "🧹");
 }
 
-function createTripCard(trip, options = {}) {
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str ?? "";
+  return div.innerHTML;
+}
+
+function createTripCard(trip) {
   const status = getTripStatus(trip);
   const div = document.createElement("div");
   div.className = "trip-card fade-in";
@@ -954,34 +822,27 @@ function createTripCard(trip, options = {}) {
     .querySelector('[data-action="delete-trip"]')
     .addEventListener("click", () => {
       if (
-        confirm(
+        !confirm(
           `Hapus trip "${trip.name}"? Itinerary & budget terkait juga akan terhapus.`,
         )
-      ) {
-        const trips = getTrips().filter((t) => t.id !== trip.id);
-        saveTrips(trips);
-        lsSet(
-          LS_KEYS.ITINERARY,
-          lsGet(LS_KEYS.ITINERARY, []).filter((i) => i.tripId !== trip.id),
-        );
-        lsSet(
-          LS_KEYS.BUDGET,
-          lsGet(LS_KEYS.BUDGET, []).filter((b) => b.tripId !== trip.id),
-        );
-        showToast("Trip berhasil dihapus.", "info", "🗑️");
-        renderDashboard();
-        renderTripSelectOptions();
-        renderItinerary();
-        renderBudget();
-      }
+      )
+        return;
+      saveTrips(getTrips().filter((t) => t.id !== trip.id));
+      lsSet(
+        LS_KEYS.ITINERARY,
+        lsGet(LS_KEYS.ITINERARY, []).filter((i) => i.tripId !== trip.id),
+      );
+      lsSet(
+        LS_KEYS.BUDGET,
+        lsGet(LS_KEYS.BUDGET, []).filter((b) => b.tripId !== trip.id),
+      );
+      showToast("Trip berhasil dihapus.", "info", "🗑️");
+      renderDashboard();
+      renderTripSelectOptions();
+      renderItinerary();
+      renderBudget();
     });
   return div;
-}
-
-function escapeHtml(str) {
-  const div = document.createElement("div");
-  div.textContent = str ?? "";
-  return div.innerHTML;
 }
 
 /* =============================================================
@@ -1011,17 +872,17 @@ function renderDashboard() {
     ? `Aktif (±${Math.round(lastLocation.accuracy || 0)}m)`
     : "Nonaktif";
 
-  // Perjalanan aktif (list semua trip sebagai card menarik)
+  // Perjalanan aktif
   const box = document.getElementById("activeTripBox");
   box.innerHTML = "";
   if (trips.length === 0) {
     box.innerHTML =
       '<p class="empty-text">Belum ada perjalanan aktif. Buat trip baru untuk memulai!</p>';
   } else {
-    const sorted = [...trips].sort(
-      (a, b) => new Date(a.start) - new Date(b.start),
-    );
-    sorted.slice(0, 3).forEach((trip) => box.appendChild(createTripCard(trip)));
+    [...trips]
+      .sort((a, b) => new Date(a.start) - new Date(b.start))
+      .slice(0, 3)
+      .forEach((trip) => box.appendChild(createTripCard(trip)));
   }
 
   // Lokasi pengguna
@@ -1042,21 +903,20 @@ function renderDashboard() {
       .addEventListener("click", detectLocation);
   }
 
-  // Ringkasan Budget
+  // Ringkasan budget
   const budgetBox = document.getElementById("budgetSummaryBox");
   const totalPlan = trips.reduce((sum, t) => sum + Number(t.budget), 0);
   if (totalPlan === 0 && budgetEntries.length === 0) {
     budgetBox.innerHTML = '<p class="empty-text">Belum ada data budget.</p>';
   } else {
-    const remaining = totalPlan - totalExpense;
     budgetBox.innerHTML = `
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:4px;">Total Budget: <b>${formatRupiah(totalPlan)}</b></p>
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:4px;">Pengeluaran: <b style="color:#dc2626">${formatRupiah(totalExpense)}</b></p>
-      <p style="font-size:13px;color:var(--text-muted);">Sisa: <b style="color:var(--accent-green-dark)">${formatRupiah(remaining)}</b></p>
+      <p style="font-size:13px;color:var(--text-muted);">Sisa: <b style="color:var(--accent-green-dark)">${formatRupiah(totalPlan - totalExpense)}</b></p>
     `;
   }
 
-  // Ringkasan Packing
+  // Ringkasan packing
   const packingBox = document.getElementById("packingSummaryBox");
   if (packing.length === 0) {
     packingBox.innerHTML =
@@ -1068,7 +928,6 @@ function renderDashboard() {
       <div class="progress-bar"><div class="progress-fill green" style="width:${packingPct}%"></div></div>
     `;
   }
-
   updateNavUser();
 }
 
@@ -1084,11 +943,10 @@ function saveItinerary(list) {
 
 function renderTripSelectOptions() {
   const trips = getTrips();
-  const selects = [
+  [
     document.getElementById("itineraryTripSelect"),
     document.getElementById("chooseTripSelect"),
-  ];
-  selects.forEach((select) => {
+  ].forEach((select) => {
     if (!select) return;
     const prevValue = select.value;
     select.innerHTML = "";
@@ -1109,8 +967,7 @@ function renderTripSelectOptions() {
 
 function renderItinerary() {
   const list = document.getElementById("itineraryList");
-  const tripSelect = document.getElementById("itineraryTripSelect");
-  const tripId = tripSelect.value;
+  const tripId = document.getElementById("itineraryTripSelect").value;
   const items = getItinerary()
     .filter((i) => i.tripId === tripId)
     .sort((a, b) => a.time.localeCompare(b.time));
@@ -1147,14 +1004,15 @@ function renderItinerary() {
 }
 
 /* =============================================================
-   TEMPAT SEKITAR (Geolocation + Overpass API / OpenStreetMap)
+   TEMPAT SEKITAR — DATA KURASI PER KOTA
+   Seluruh koordinat (lat/lon) bersifat PERKIRAAN. Karena itu tombol
+   Google Maps untuk data kurasi mencari lewat nama + alamat, bukan koordinat.
    ============================================================= */
 let currentPlaces = [];
 let currentPlaceFilter = "all";
 let currentCityFilter = "all";
 let pendingPlaceForTrip = null;
 
-// Kategori tempat terpadu — dipakai baik untuk hasil Overpass API maupun data kurasi Kota Probolinggo
 const CATEGORY_INFO = {
   wisata: { filter: "wisata", icon: "🌴", label: "Wisata" },
   kuliner: { filter: "kuliner", icon: "🍜", label: "Kuliner" },
@@ -1166,1054 +1024,793 @@ const CATEGORY_INFO = {
   penting: { filter: "penting", icon: "🚉", label: "Tempat Penting" },
 };
 
-/*
- * DATA KURASI TEMPAT PER KOTA
- * - Kota Probolinggo: rangkuman informasi publik (Dispopar Kota Probolinggo & referensi lokal), cukup detail
- *   hingga tingkat cafe/kuliner/hotel per jalan.
- * - Kota-kota lain: berisi landmark/tempat paling terkenal sebagai titik awal, belum sedetail Probolinggo.
- * Catatan: seluruh koordinat (lat/lon) bersifat PERKIRAAN, disarankan diverifikasi ulang lewat Google Maps
- * sebelum dipakai secara presisi.
- */
+// P(nama, kategori, alamat, lat, lon, deskripsi?) -> objek tempat
+const P = (name, category, address, lat, lon, description) => ({
+  name,
+  category,
+  address,
+  lat,
+  lon,
+  ...(description ? { description } : {}),
+});
+
 const CURATED_CITIES = {
   "Kota Probolinggo": {
     center: { lat: -7.7546, lon: 113.2159 },
     places: [
-      // ---------- Wisata & tempat rekreasi ----------
-      {
-        name: "BEE JAY BAKAU RESORT (BJBR)",
-        category: "wisata",
-        address: "Kawasan Pelabuhan PPP, Mayangan",
-        lat: -7.728,
-        lon: 113.234,
-        description: "Wisata mangrove/bakau di kawasan pelabuhan.",
-      },
-      {
-        name: "Taman Wisata Study Lingkungan",
-        category: "wisata",
-        address: "Mayangan, Kota Probolinggo",
-        lat: -7.73,
-        lon: 113.23,
-        description: "Wisata edukasi lingkungan.",
-      },
-      {
-        name: "Gembok Cinta BJBR",
-        category: "wisata",
-        address: "Kawasan BJBR, Mayangan",
-        lat: -7.7282,
-        lon: 113.2342,
-        description: "Spot foto populer di kawasan BJBR.",
-      },
-      {
-        name: "Bundaran GLASER (Gladak Serang)",
-        category: "wisata",
-        address: "Pusat Kota Probolinggo",
-        lat: -7.75,
-        lon: 113.213,
-        description: "Area publik dan tempat bersantai.",
-      },
-      {
-        name: "Alun-Alun Probolinggo",
-        category: "wisata",
-        address: "Jl. Suroyo, Pusat Kota Probolinggo",
-        lat: -7.7546,
-        lon: 113.2159,
-        description: "Ruang publik di pusat kota.",
-      },
-      {
-        name: "Taman Maramis",
-        category: "wisata",
-        address: "Pusat Kota Probolinggo",
-        lat: -7.753,
-        lon: 113.2145,
-        description: "Taman kota untuk berbagai kegiatan dan event.",
-      },
-      {
-        name: "Museum Probolinggo",
-        category: "budaya",
-        address: "Pusat Kota Probolinggo",
-        lat: -7.755,
-        lon: 113.217,
-        description: "Wisata sejarah dan budaya.",
-      },
-      {
-        name: "Museum Dr. Moh. Saleh",
-        category: "budaya",
-        address: "Jl. Dr. Moch Saleh, Kota Probolinggo",
-        lat: -7.7555,
-        lon: 113.2175,
-        description: "Museum wisata sejarah.",
-      },
-      {
-        name: "Klenteng Tri Dharma",
-        category: "budaya",
-        address: "Kawasan Pecinan, Kota Probolinggo",
-        lat: -7.74,
-        lon: 113.22,
-        description: "Wisata religi dan budaya Tionghoa.",
-      },
-      {
-        name: "Gereja Merah",
-        category: "budaya",
-        address: "Kawasan Pusat Kota Probolinggo",
-        lat: -7.738,
-        lon: 113.223,
-        description: "Bangunan gereja bersejarah.",
-      },
-      // ---------- Cafe & tempat nongkrong ----------
-      {
-        name: "BARREL Coffee Garage",
-        category: "cafe",
-        address: "Jl. Mt. Haryono, Kota Probolinggo",
-        lat: -7.757,
-        lon: 113.219,
-      },
-      {
-        name: "Daily Dose Coffee",
-        category: "cafe",
-        address: "Jl. D.I. Panjaitan, Kota Probolinggo",
-        lat: -7.76,
-        lon: 113.214,
-      },
-      {
-        name: "Simposium Coffee (Headquarter)",
-        category: "cafe",
-        address: "Jl. Dr. Moch Saleh, Kota Probolinggo",
-        lat: -7.7555,
-        lon: 113.2178,
-      },
-      {
-        name: "ALIBI CAFE",
-        category: "cafe",
-        address: "Jl. R.A. Kartini, Kota Probolinggo",
-        lat: -7.753,
-        lon: 113.21,
-      },
-      {
-        name: "Mak Jleb Coffee & Kedai",
-        category: "cafe",
-        address: "Kanigaran, Kota Probolinggo",
-        lat: -7.748,
-        lon: 113.223,
-      },
-      {
-        name: "Putri Lingga Coffee & Micro Roastery",
-        category: "cafe",
-        address: "Kademangan, Kota Probolinggo",
-        lat: -7.765,
-        lon: 113.205,
-      },
-      {
-        name: "Altruist Coffee",
-        category: "cafe",
-        address: "Kawasan Mastrip, Kota Probolinggo",
-        lat: -7.762,
-        lon: 113.226,
-      },
-      {
-        name: "RUMAH NENEK Coffee Shop",
-        category: "cafe",
-        address: "Kota Probolinggo",
-        lat: -7.756,
-        lon: 113.22,
-      },
-      {
-        name: "Kedai27 Probolinggo",
-        category: "cafe",
-        address: "Kota Probolinggo",
-        lat: -7.754,
-        lon: 113.218,
-      },
-      // ---------- Kuliner ----------
-      {
-        name: "Bakso Probolinggo",
-        category: "kuliner",
-        address: "Kota Probolinggo",
-        lat: -7.755,
-        lon: 113.216,
-      },
-      {
-        name: "Kupang Lontong Pahlawan",
-        category: "kuliner",
-        address: "Jl. Pahlawan, Kota Probolinggo",
-        lat: -7.75,
-        lon: 113.219,
-      },
-      {
-        name: "Rawon Gunawan",
-        category: "kuliner",
-        address: "Kota Probolinggo",
-        lat: -7.756,
-        lon: 113.215,
-      },
-      {
-        name: "Ikan Bakar Gatsu",
-        category: "kuliner",
-        address: "Jl. Gatot Subroto, Kota Probolinggo",
-        lat: -7.748,
-        lon: 113.228,
-      },
-      {
-        name: "Nasi Pecel Pocong",
-        category: "kuliner",
-        address: "Kota Probolinggo",
-        lat: -7.757,
-        lon: 113.213,
-      },
-      {
-        name: "Soto Ayam Pak Madjar",
-        category: "kuliner",
-        address: "Kota Probolinggo",
-        lat: -7.754,
-        lon: 113.22,
-      },
-      {
-        name: "Bebek Goreng Bu Lely",
-        category: "kuliner",
-        address: "Kota Probolinggo",
-        lat: -7.759,
-        lon: 113.217,
-      },
-      {
-        name: "Tahu Kikil Brak",
-        category: "kuliner",
-        address: "Kota Probolinggo",
-        lat: -7.752,
-        lon: 113.214,
-      },
-      {
-        name: "Mie Jawa Guntur",
-        category: "kuliner",
-        address: "Kota Probolinggo",
-        lat: -7.7555,
-        lon: 113.219,
-      },
-      {
-        name: "Rumah Makan Sari Laut SJDW",
-        category: "kuliner",
-        address: "Kawasan Pesisir, Kota Probolinggo",
-        lat: -7.746,
-        lon: 113.226,
-      },
-      // ---------- Hotel / penginapan ----------
-      {
-        name: "Bromo Park Hotel",
-        category: "hotel",
-        address: "Kota Probolinggo",
-        lat: -7.754,
-        lon: 113.2175,
-      },
-      {
-        name: "Bromo View Hotel",
-        category: "hotel",
-        address: "Kota Probolinggo",
-        lat: -7.756,
-        lon: 113.2185,
-      },
-      {
-        name: "Paseban Sena (Ballroom, Hotel & Restaurant)",
-        category: "hotel",
-        address: "Kota Probolinggo",
-        lat: -7.75,
-        lon: 113.21,
-      },
-      {
-        name: "Caldera Park Homestay",
-        category: "hotel",
-        address: "Kota Probolinggo",
-        lat: -7.76,
-        lon: 113.22,
-      },
-      {
-        name: "RedDoorz @ Hotel Tampiarto",
-        category: "hotel",
-        address: "Kota Probolinggo, Jawa Timur",
-        lat: -7.757,
-        lon: 113.216,
-      },
-      // ---------- Tempat penting ----------
-      {
-        name: "Stasiun Probolinggo",
-        category: "penting",
-        address: "Kota Probolinggo",
-        lat: -7.7561,
-        lon: 113.2166,
-        description: "Stasiun kereta api.",
-      },
-      {
-        name: "Terminal Bayuangga",
-        category: "penting",
-        address: "Kota Probolinggo",
-        lat: -7.7386,
-        lon: 113.1935,
-        description: "Terminal bus utama.",
-      },
-      {
-        name: "Pelabuhan Tanjung Tembaga",
-        category: "penting",
-        address: "Mayangan, Kota Probolinggo",
-        lat: -7.728,
-        lon: 113.238,
-        description: "Pelabuhan utama Kota Probolinggo.",
-      },
-      {
-        name: "Pelabuhan Perikanan Pantai Mayangan",
-        category: "penting",
-        address: "Mayangan, Kota Probolinggo",
-        lat: -7.729,
-        lon: 113.232,
-        description: "Pelabuhan perikanan.",
-      },
-      {
-        name: "GOR Ahmad Yani",
-        category: "penting",
-        address: "Kota Probolinggo",
-        lat: -7.762,
-        lon: 113.214,
-        description: "Gedung olahraga.",
-      },
+      P(
+        "BEE JAY BAKAU RESORT (BJBR)",
+        "wisata",
+        "Kawasan Pelabuhan PPP, Mayangan",
+        -7.728,
+        113.234,
+        "Wisata mangrove/bakau di kawasan pelabuhan.",
+      ),
+      P(
+        "Taman Wisata Study Lingkungan",
+        "wisata",
+        "Mayangan, Kota Probolinggo",
+        -7.73,
+        113.23,
+        "Wisata edukasi lingkungan.",
+      ),
+      P(
+        "Gembok Cinta BJBR",
+        "wisata",
+        "Kawasan BJBR, Mayangan",
+        -7.7282,
+        113.2342,
+        "Spot foto populer di kawasan BJBR.",
+      ),
+      P(
+        "Bundaran GLASER (Gladak Serang)",
+        "wisata",
+        "Pusat Kota Probolinggo",
+        -7.75,
+        113.213,
+        "Area publik dan tempat bersantai.",
+      ),
+      P(
+        "Alun-Alun Probolinggo",
+        "wisata",
+        "Jl. Suroyo, Pusat Kota Probolinggo",
+        -7.7546,
+        113.2159,
+        "Ruang publik di pusat kota.",
+      ),
+      P(
+        "Taman Maramis",
+        "wisata",
+        "Pusat Kota Probolinggo",
+        -7.753,
+        113.2145,
+        "Taman kota untuk berbagai kegiatan dan event.",
+      ),
+      P(
+        "Museum Probolinggo",
+        "budaya",
+        "Pusat Kota Probolinggo",
+        -7.755,
+        113.217,
+        "Wisata sejarah dan budaya.",
+      ),
+      P(
+        "Museum Dr. Moh. Saleh",
+        "budaya",
+        "Jl. Dr. Moch Saleh, Kota Probolinggo",
+        -7.7555,
+        113.2175,
+        "Museum wisata sejarah.",
+      ),
+      P(
+        "Klenteng Tri Dharma",
+        "budaya",
+        "Kawasan Pecinan, Kota Probolinggo",
+        -7.74,
+        113.22,
+        "Wisata religi dan budaya Tionghoa.",
+      ),
+      P(
+        "Gereja Merah",
+        "budaya",
+        "Kawasan Pusat Kota Probolinggo",
+        -7.738,
+        113.223,
+        "Bangunan gereja bersejarah.",
+      ),
+      P(
+        "BARREL Coffee Garage",
+        "cafe",
+        "Jl. Mt. Haryono, Kota Probolinggo",
+        -7.757,
+        113.219,
+      ),
+      P(
+        "Daily Dose Coffee",
+        "cafe",
+        "Jl. D.I. Panjaitan, Kota Probolinggo",
+        -7.76,
+        113.214,
+      ),
+      P(
+        "Simposium Coffee (Headquarter)",
+        "cafe",
+        "Jl. Dr. Moch Saleh, Kota Probolinggo",
+        -7.7555,
+        113.2178,
+      ),
+      P(
+        "ALIBI CAFE",
+        "cafe",
+        "Jl. R.A. Kartini, Kota Probolinggo",
+        -7.753,
+        113.21,
+      ),
+      P(
+        "Mak Jleb Coffee & Kedai",
+        "cafe",
+        "Kanigaran, Kota Probolinggo",
+        -7.748,
+        113.223,
+      ),
+      P(
+        "Putri Lingga Coffee & Micro Roastery",
+        "cafe",
+        "Kademangan, Kota Probolinggo",
+        -7.765,
+        113.205,
+      ),
+      P(
+        "Altruist Coffee",
+        "cafe",
+        "Kawasan Mastrip, Kota Probolinggo",
+        -7.762,
+        113.226,
+      ),
+      P("RUMAH NENEK Coffee Shop", "cafe", "Kota Probolinggo", -7.756, 113.22),
+      P("Kedai27 Probolinggo", "cafe", "Kota Probolinggo", -7.754, 113.218),
+      P("Bakso Probolinggo", "kuliner", "Kota Probolinggo", -7.755, 113.216),
+      P(
+        "Kupang Lontong Pahlawan",
+        "kuliner",
+        "Jl. Pahlawan, Kota Probolinggo",
+        -7.75,
+        113.219,
+      ),
+      P("Rawon Gunawan", "kuliner", "Kota Probolinggo", -7.756, 113.215),
+      P(
+        "Ikan Bakar Gatsu",
+        "kuliner",
+        "Jl. Gatot Subroto, Kota Probolinggo",
+        -7.748,
+        113.228,
+      ),
+      P("Nasi Pecel Pocong", "kuliner", "Kota Probolinggo", -7.757, 113.213),
+      P("Soto Ayam Pak Madjar", "kuliner", "Kota Probolinggo", -7.754, 113.22),
+      P("Bebek Goreng Bu Lely", "kuliner", "Kota Probolinggo", -7.759, 113.217),
+      P("Tahu Kikil Brak", "kuliner", "Kota Probolinggo", -7.752, 113.214),
+      P("Mie Jawa Guntur", "kuliner", "Kota Probolinggo", -7.7555, 113.219),
+      P(
+        "Rumah Makan Sari Laut SJDW",
+        "kuliner",
+        "Kawasan Pesisir, Kota Probolinggo",
+        -7.746,
+        113.226,
+      ),
+      P("Bromo Park Hotel", "hotel", "Kota Probolinggo", -7.754, 113.2175),
+      P("Bromo View Hotel", "hotel", "Kota Probolinggo", -7.756, 113.2185),
+      P(
+        "Paseban Sena (Ballroom, Hotel & Restaurant)",
+        "hotel",
+        "Kota Probolinggo",
+        -7.75,
+        113.21,
+      ),
+      P("Caldera Park Homestay", "hotel", "Kota Probolinggo", -7.76, 113.22),
+      P(
+        "RedDoorz @ Hotel Tampiarto",
+        "hotel",
+        "Kota Probolinggo, Jawa Timur",
+        -7.757,
+        113.216,
+      ),
+      P(
+        "Stasiun Probolinggo",
+        "penting",
+        "Kota Probolinggo",
+        -7.7561,
+        113.2166,
+        "Stasiun kereta api.",
+      ),
+      P(
+        "Terminal Bayuangga",
+        "penting",
+        "Kota Probolinggo",
+        -7.7386,
+        113.1935,
+        "Terminal bus utama.",
+      ),
+      P(
+        "Pelabuhan Tanjung Tembaga",
+        "penting",
+        "Mayangan, Kota Probolinggo",
+        -7.728,
+        113.238,
+        "Pelabuhan utama Kota Probolinggo.",
+      ),
+      P(
+        "Pelabuhan Perikanan Pantai Mayangan",
+        "penting",
+        "Mayangan, Kota Probolinggo",
+        -7.729,
+        113.232,
+        "Pelabuhan perikanan.",
+      ),
+      P(
+        "GOR Ahmad Yani",
+        "penting",
+        "Kota Probolinggo",
+        -7.762,
+        113.214,
+        "Gedung olahraga.",
+      ),
     ],
   },
-
   Surabaya: {
     center: { lat: -7.2575, lon: 112.7521 },
     places: [
-      {
-        name: "Tugu Pahlawan",
-        category: "budaya",
-        address: "Jl. Pahlawan, Surabaya",
-        lat: -7.245808,
-        lon: 112.737785,
-        description: "Monumen ikon Kota Surabaya beserta Museum 10 Nopember.",
-      },
-      {
-        name: "House of Sampoerna",
-        category: "budaya",
-        address: "Surabaya",
-        lat: -7.2323,
-        lon: 112.7376,
-        description: "Museum sejarah kretek Sampoerna di kawasan kota tua.",
-      },
-      {
-        name: "Jembatan Merah",
-        category: "budaya",
-        address: "Surabaya",
-        lat: -7.2385,
-        lon: 112.7368,
-        description: "Kawasan bersejarah peninggalan kolonial.",
-      },
-      {
-        name: "Museum Kapal Selam (Monkasel)",
-        category: "wisata",
-        address: "Surabaya",
-        lat: -7.2661,
-        lon: 112.7439,
-        description: "Museum kapal selam asli KRI Pasopati.",
-      },
-      {
-        name: "Taman Bungkul",
-        category: "taman",
-        address: "Surabaya",
-        lat: -7.2925,
-        lon: 112.7387,
-        description: "Taman kota populer untuk bersantai dan olahraga.",
-      },
-      {
-        name: "Kebun Binatang Surabaya",
-        category: "wisata",
-        address: "Surabaya",
-        lat: -7.2917,
-        lon: 112.7379,
-      },
-      {
-        name: "Jembatan Suramadu",
-        category: "wisata",
-        address: "Surabaya",
-        lat: -7.1725,
-        lon: 112.7614,
-        description: "Jembatan penghubung Surabaya–Madura.",
-      },
-      {
-        name: "Masjid Al Akbar Surabaya",
-        category: "budaya",
-        address: "Surabaya",
-        lat: -7.3327,
-        lon: 112.7166,
-        description: "Masjid terbesar kedua di Indonesia.",
-      },
-      {
-        name: "Klenteng Sanggar Agung",
-        category: "budaya",
-        address: "Kenjeran, Surabaya",
-        lat: -7.2265,
-        lon: 112.7972,
-        description: "Klenteng dengan patung Dewi Kwan Im menghadap laut.",
-      },
-      {
-        name: "Tunjungan Plaza",
-        category: "mall",
-        address: "Jl. Basuki Rahmat, Surabaya",
-        lat: -7.2624,
-        lon: 112.7396,
-      },
-      {
-        name: "Pakuwon Mall",
-        category: "mall",
-        address: "Surabaya Barat",
-        lat: -7.2793,
-        lon: 112.6725,
-      },
-      {
-        name: "Sate Klopo Ondomohen",
-        category: "kuliner",
-        address: "Surabaya",
-        lat: -7.2665,
-        lon: 112.7413,
-        description: "Sate klopo (kelapa) khas Surabaya.",
-      },
-      {
-        name: "Rawon Setan",
-        category: "kuliner",
-        address: "Jl. Embong Malang, Surabaya",
-        lat: -7.2635,
-        lon: 112.7376,
-      },
-      {
-        name: "Rujak Cingur Ahmad Jais",
-        category: "kuliner",
-        address: "Surabaya",
-        lat: -7.254,
-        lon: 112.744,
-        description: "Rujak cingur legendaris khas Surabaya.",
-      },
-      {
-        name: "Lontong Balap Pak Gendut",
-        category: "kuliner",
-        address: "Surabaya",
-        lat: -7.258,
-        lon: 112.742,
-      },
-      {
-        name: "Zangrandi Ice Cream",
-        category: "cafe",
-        address: "Jl. Yos Sudarso, Surabaya",
-        lat: -7.2603,
-        lon: 112.743,
-        description: "Kedai es krim legendaris sejak era kolonial.",
-      },
-      {
-        name: "Hotel Majapahit",
-        category: "hotel",
-        address: "Jl. Tunjungan, Surabaya",
-        lat: -7.2637,
-        lon: 112.7396,
-        description: "Hotel bersejarah peninggalan kolonial.",
-      },
-      {
-        name: "Bumi Surabaya City Resort",
-        category: "hotel",
-        address: "Surabaya",
-        lat: -7.266,
-        lon: 112.7392,
-      },
-      {
-        name: "Stasiun Surabaya Gubeng",
-        category: "penting",
-        address: "Surabaya",
-        lat: -7.2646,
-        lon: 112.7523,
-        description: "Stasiun kereta api utama.",
-      },
-      {
-        name: "Terminal Purabaya (Bungurasih)",
-        category: "penting",
-        address: "Surabaya",
-        lat: -7.3444,
-        lon: 112.7186,
-        description: "Terminal bus antar kota terbesar.",
-      },
-      {
-        name: "Pelabuhan Tanjung Perak",
-        category: "penting",
-        address: "Surabaya",
-        lat: -7.1953,
-        lon: 112.7328,
-        description: "Pelabuhan utama Surabaya.",
-      },
+      P(
+        "Tugu Pahlawan",
+        "budaya",
+        "Jl. Pahlawan, Surabaya",
+        -7.245808,
+        112.737785,
+        "Monumen ikon Kota Surabaya beserta Museum 10 Nopember.",
+      ),
+      P(
+        "House of Sampoerna",
+        "budaya",
+        "Surabaya",
+        -7.2323,
+        112.7376,
+        "Museum sejarah kretek Sampoerna di kawasan kota tua.",
+      ),
+      P(
+        "Jembatan Merah",
+        "budaya",
+        "Surabaya",
+        -7.2385,
+        112.7368,
+        "Kawasan bersejarah peninggalan kolonial.",
+      ),
+      P(
+        "Museum Kapal Selam (Monkasel)",
+        "wisata",
+        "Surabaya",
+        -7.2661,
+        112.7439,
+        "Museum kapal selam asli KRI Pasopati.",
+      ),
+      P(
+        "Taman Bungkul",
+        "taman",
+        "Surabaya",
+        -7.2925,
+        112.7387,
+        "Taman kota populer untuk bersantai dan olahraga.",
+      ),
+      P("Kebun Binatang Surabaya", "wisata", "Surabaya", -7.2917, 112.7379),
+      P(
+        "Jembatan Suramadu",
+        "wisata",
+        "Surabaya",
+        -7.1725,
+        112.7614,
+        "Jembatan penghubung Surabaya–Madura.",
+      ),
+      P(
+        "Masjid Al Akbar Surabaya",
+        "budaya",
+        "Surabaya",
+        -7.3327,
+        112.7166,
+        "Masjid terbesar kedua di Indonesia.",
+      ),
+      P(
+        "Klenteng Sanggar Agung",
+        "budaya",
+        "Kenjeran, Surabaya",
+        -7.2265,
+        112.7972,
+        "Klenteng dengan patung Dewi Kwan Im menghadap laut.",
+      ),
+      P(
+        "Tunjungan Plaza",
+        "mall",
+        "Jl. Basuki Rahmat, Surabaya",
+        -7.2624,
+        112.7396,
+      ),
+      P("Pakuwon Mall", "mall", "Surabaya Barat", -7.2793, 112.6725),
+      P(
+        "Sate Klopo Ondomohen",
+        "kuliner",
+        "Surabaya",
+        -7.2665,
+        112.7413,
+        "Sate klopo (kelapa) khas Surabaya.",
+      ),
+      P(
+        "Rawon Setan",
+        "kuliner",
+        "Jl. Embong Malang, Surabaya",
+        -7.2635,
+        112.7376,
+      ),
+      P(
+        "Rujak Cingur Ahmad Jais",
+        "kuliner",
+        "Surabaya",
+        -7.254,
+        112.744,
+        "Rujak cingur legendaris khas Surabaya.",
+      ),
+      P("Lontong Balap Pak Gendut", "kuliner", "Surabaya", -7.258, 112.742),
+      P(
+        "Zangrandi Ice Cream",
+        "cafe",
+        "Jl. Yos Sudarso, Surabaya",
+        -7.2603,
+        112.743,
+        "Kedai es krim legendaris sejak era kolonial.",
+      ),
+      P(
+        "Hotel Majapahit",
+        "hotel",
+        "Jl. Tunjungan, Surabaya",
+        -7.2637,
+        112.7396,
+        "Hotel bersejarah peninggalan kolonial.",
+      ),
+      P("Bumi Surabaya City Resort", "hotel", "Surabaya", -7.266, 112.7392),
+      P(
+        "Stasiun Surabaya Gubeng",
+        "penting",
+        "Surabaya",
+        -7.2646,
+        112.7523,
+        "Stasiun kereta api utama.",
+      ),
+      P(
+        "Terminal Purabaya (Bungurasih)",
+        "penting",
+        "Surabaya",
+        -7.3444,
+        112.7186,
+        "Terminal bus antar kota terbesar.",
+      ),
+      P(
+        "Pelabuhan Tanjung Perak",
+        "penting",
+        "Surabaya",
+        -7.1953,
+        112.7328,
+        "Pelabuhan utama Surabaya.",
+      ),
     ],
   },
-
   Malang: {
     center: { lat: -7.9797, lon: 112.6304 },
     places: [
-      {
-        name: "Alun-Alun Kota Malang",
-        category: "wisata",
-        address: "Malang",
-        lat: -7.9797,
-        lon: 112.6304,
-      },
-      {
-        name: "Jatim Park 1",
-        category: "wisata",
-        address: "Batu, Malang",
-        lat: -7.8817,
-        lon: 112.5194,
-      },
-      {
-        name: "Jatim Park 2",
-        category: "wisata",
-        address: "Batu, Malang",
-        lat: -7.8776,
-        lon: 112.523,
-        description: "Berisi Museum Satwa dan Batu Secret Zoo.",
-      },
-      {
-        name: "Museum Angkut",
-        category: "wisata",
-        address: "Batu, Malang",
-        lat: -7.8802,
-        lon: 112.5133,
-      },
-      {
-        name: "Batu Night Spectacular (BNS)",
-        category: "wisata",
-        address: "Batu, Malang",
-        lat: -7.8721,
-        lon: 112.5211,
-        description: "Taman hiburan malam di Batu.",
-      },
-      {
-        name: "Coban Rondo",
-        category: "wisata",
-        address: "Pujon, Malang",
-        lat: -7.8783,
-        lon: 112.4636,
-        description: "Air terjun populer di kawasan Pujon.",
-      },
-      {
-        name: "Kampung Warna Warni Jodipan",
-        category: "wisata",
-        address: "Malang",
-        lat: -7.9847,
-        lon: 112.6255,
-        description: "Kampung tematik penuh warna.",
-      },
-      {
-        name: "Alun-Alun Tugu Malang",
-        category: "wisata",
-        address: "Malang",
-        lat: -7.9758,
-        lon: 112.6317,
-        description: "Taman kota di depan Balai Kota Malang.",
-      },
-      {
-        name: "Toko Oen",
-        category: "kuliner",
-        address: "Jl. Basuki Rahmat, Malang",
-        lat: -7.9812,
-        lon: 112.6289,
-        description: "Restoran & es krim legendaris sejak 1930.",
-      },
-      {
-        name: "Bakso President",
-        category: "kuliner",
-        address: "Malang",
-        lat: -7.978,
-        lon: 112.6335,
-      },
-      {
-        name: "Pecel Kawi",
-        category: "kuliner",
-        address: "Jl. Kawi, Malang",
-        lat: -7.9856,
-        lon: 112.6255,
-      },
-      {
-        name: "Rumah Makan Inggil",
-        category: "kuliner",
-        address: "Malang",
-        lat: -7.9825,
-        lon: 112.627,
-        description: "Restoran dengan nuansa museum & seni.",
-      },
-      {
-        name: "Coffee Toffee Malang",
-        category: "cafe",
-        address: "Malang",
-        lat: -7.974,
-        lon: 112.618,
-      },
-      {
-        name: "Malang Town Square (MATOS)",
-        category: "mall",
-        address: "Malang",
-        lat: -7.9575,
-        lon: 112.6172,
-      },
-      {
-        name: "Hotel Tugu Malang",
-        category: "hotel",
-        address: "Jl. Tugu, Malang",
-        lat: -7.9765,
-        lon: 112.632,
-        description: "Hotel bertema seni dan antik.",
-      },
-      {
-        name: "Stasiun Malang Kota Baru",
-        category: "penting",
-        address: "Malang",
-        lat: -7.977,
-        lon: 112.6357,
-        description: "Stasiun kereta api utama Malang.",
-      },
-      {
-        name: "Terminal Arjosari",
-        category: "penting",
-        address: "Malang",
-        lat: -7.943,
-        lon: 112.644,
-        description: "Terminal bus utama Malang.",
-      },
+      P("Alun-Alun Kota Malang", "wisata", "Malang", -7.9797, 112.6304),
+      P("Jatim Park 1", "wisata", "Batu, Malang", -7.8817, 112.5194),
+      P(
+        "Jatim Park 2",
+        "wisata",
+        "Batu, Malang",
+        -7.8776,
+        112.523,
+        "Berisi Museum Satwa dan Batu Secret Zoo.",
+      ),
+      P("Museum Angkut", "wisata", "Batu, Malang", -7.8802, 112.5133),
+      P(
+        "Batu Night Spectacular (BNS)",
+        "wisata",
+        "Batu, Malang",
+        -7.8721,
+        112.5211,
+        "Taman hiburan malam di Batu.",
+      ),
+      P(
+        "Coban Rondo",
+        "wisata",
+        "Pujon, Malang",
+        -7.8783,
+        112.4636,
+        "Air terjun populer di kawasan Pujon.",
+      ),
+      P(
+        "Kampung Warna Warni Jodipan",
+        "wisata",
+        "Malang",
+        -7.9847,
+        112.6255,
+        "Kampung tematik penuh warna.",
+      ),
+      P(
+        "Alun-Alun Tugu Malang",
+        "wisata",
+        "Malang",
+        -7.9758,
+        112.6317,
+        "Taman kota di depan Balai Kota Malang.",
+      ),
+      P(
+        "Toko Oen",
+        "kuliner",
+        "Jl. Basuki Rahmat, Malang",
+        -7.9812,
+        112.6289,
+        "Restoran & es krim legendaris sejak 1930.",
+      ),
+      P("Bakso President", "kuliner", "Malang", -7.978, 112.6335),
+      P("Pecel Kawi", "kuliner", "Jl. Kawi, Malang", -7.9856, 112.6255),
+      P(
+        "Rumah Makan Inggil",
+        "kuliner",
+        "Malang",
+        -7.9825,
+        112.627,
+        "Restoran dengan nuansa museum & seni.",
+      ),
+      P("Coffee Toffee Malang", "cafe", "Malang", -7.974, 112.618),
+      P("Malang Town Square (MATOS)", "mall", "Malang", -7.9575, 112.6172),
+      P(
+        "Hotel Tugu Malang",
+        "hotel",
+        "Jl. Tugu, Malang",
+        -7.9765,
+        112.632,
+        "Hotel bertema seni dan antik.",
+      ),
+      P(
+        "Stasiun Malang Kota Baru",
+        "penting",
+        "Malang",
+        -7.977,
+        112.6357,
+        "Stasiun kereta api utama Malang.",
+      ),
+      P(
+        "Terminal Arjosari",
+        "penting",
+        "Malang",
+        -7.943,
+        112.644,
+        "Terminal bus utama Malang.",
+      ),
     ],
   },
-
   Yogyakarta: {
     center: { lat: -7.7956, lon: 110.3695 },
     places: [
-      {
-        name: "Malioboro",
-        category: "wisata",
-        address: "Yogyakarta",
-        lat: -7.793,
-        lon: 110.3658,
-        description: "Kawasan jalan wisata dan belanja legendaris.",
-      },
-      {
-        name: "Keraton Yogyakarta",
-        category: "budaya",
-        address: "Yogyakarta",
-        lat: -7.8053,
-        lon: 110.3642,
-      },
-      {
-        name: "Candi Prambanan",
-        category: "wisata",
-        address: "Yogyakarta",
-        lat: -7.752,
-        lon: 110.4915,
-        description: "Kompleks candi Hindu terbesar di Indonesia.",
-      },
-      {
-        name: "Candi Borobudur",
-        category: "wisata",
-        address: "Magelang (dekat Yogyakarta)",
-        lat: -7.6079,
-        lon: 110.2038,
-        description: "Candi Buddha terbesar di dunia.",
-      },
-      {
-        name: "Taman Sari",
-        category: "budaya",
-        address: "Yogyakarta",
-        lat: -7.81,
-        lon: 110.3594,
-        description: "Bekas taman air Keraton Yogyakarta.",
-      },
-      {
-        name: "Tugu Yogyakarta",
-        category: "wisata",
-        address: "Yogyakarta",
-        lat: -7.7828,
-        lon: 110.3671,
-      },
-      {
-        name: "Alun-Alun Kidul",
-        category: "wisata",
-        address: "Yogyakarta",
-        lat: -7.8117,
-        lon: 110.3636,
-        description: "Alun-alun selatan dengan tradisi masangin.",
-      },
-      {
-        name: "Pantai Parangtritis",
-        category: "wisata",
-        address: "Bantul, Yogyakarta",
-        lat: -8.0253,
-        lon: 110.3316,
-      },
-      {
-        name: "Tebing Breksi",
-        category: "wisata",
-        address: "Sleman, Yogyakarta",
-        lat: -7.7712,
-        lon: 110.5111,
-        description: "Bekas tambang batu dengan pahatan relief.",
-      },
-      {
-        name: "Gembira Loka Zoo",
-        category: "wisata",
-        address: "Yogyakarta",
-        lat: -7.8109,
-        lon: 110.3934,
-      },
-      {
-        name: "Gudeg Yu Djum",
-        category: "kuliner",
-        address: "Yogyakarta",
-        lat: -7.7825,
-        lon: 110.3776,
-        description: "Gudeg legendaris khas Yogyakarta.",
-      },
-      {
-        name: "Angkringan Lik Man (Kopi Joss)",
-        category: "kuliner",
-        address: "Jl. Wongsodirjan, Yogyakarta",
-        lat: -7.7906,
-        lon: 110.3672,
-        description: "Angkringan legendaris dengan kopi arang.",
-      },
-      {
-        name: "Bakpia Pathok 25",
-        category: "kuliner",
-        address: "Yogyakarta",
-        lat: -7.7973,
-        lon: 110.3556,
-      },
-      {
-        name: "Sate Klathak Pak Pong",
-        category: "kuliner",
-        address: "Bantul, Yogyakarta",
-        lat: -7.8636,
-        lon: 110.3689,
-      },
-      {
-        name: "Malioboro Mall",
-        category: "mall",
-        address: "Yogyakarta",
-        lat: -7.7924,
-        lon: 110.3659,
-      },
-      {
-        name: "Hotel Tentrem Yogyakarta",
-        category: "hotel",
-        address: "Yogyakarta",
-        lat: -7.7784,
-        lon: 110.3706,
-      },
-      {
-        name: "Hotel Phoenix Yogyakarta",
-        category: "hotel",
-        address: "Jl. Jenderal Sudirman, Yogyakarta",
-        lat: -7.7823,
-        lon: 110.3695,
-      },
-      {
-        name: "Stasiun Yogyakarta (Tugu)",
-        category: "penting",
-        address: "Yogyakarta",
-        lat: -7.7896,
-        lon: 110.363,
-        description: "Stasiun kereta api utama Yogyakarta.",
-      },
-      {
-        name: "Terminal Giwangan",
-        category: "penting",
-        address: "Yogyakarta",
-        lat: -7.828,
-        lon: 110.3805,
-        description: "Terminal bus utama Yogyakarta.",
-      },
+      P(
+        "Malioboro",
+        "wisata",
+        "Yogyakarta",
+        -7.793,
+        110.3658,
+        "Kawasan jalan wisata dan belanja legendaris.",
+      ),
+      P("Keraton Yogyakarta", "budaya", "Yogyakarta", -7.8053, 110.3642),
+      P(
+        "Candi Prambanan",
+        "wisata",
+        "Yogyakarta",
+        -7.752,
+        110.4915,
+        "Kompleks candi Hindu terbesar di Indonesia.",
+      ),
+      P(
+        "Candi Borobudur",
+        "wisata",
+        "Magelang (dekat Yogyakarta)",
+        -7.6079,
+        110.2038,
+        "Candi Buddha terbesar di dunia.",
+      ),
+      P(
+        "Taman Sari",
+        "budaya",
+        "Yogyakarta",
+        -7.81,
+        110.3594,
+        "Bekas taman air Keraton Yogyakarta.",
+      ),
+      P("Tugu Yogyakarta", "wisata", "Yogyakarta", -7.7828, 110.3671),
+      P(
+        "Alun-Alun Kidul",
+        "wisata",
+        "Yogyakarta",
+        -7.8117,
+        110.3636,
+        "Alun-alun selatan dengan tradisi masangin.",
+      ),
+      P(
+        "Pantai Parangtritis",
+        "wisata",
+        "Bantul, Yogyakarta",
+        -8.0253,
+        110.3316,
+      ),
+      P(
+        "Tebing Breksi",
+        "wisata",
+        "Sleman, Yogyakarta",
+        -7.7712,
+        110.5111,
+        "Bekas tambang batu dengan pahatan relief.",
+      ),
+      P("Gembira Loka Zoo", "wisata", "Yogyakarta", -7.8109, 110.3934),
+      P(
+        "Gudeg Yu Djum",
+        "kuliner",
+        "Yogyakarta",
+        -7.7825,
+        110.3776,
+        "Gudeg legendaris khas Yogyakarta.",
+      ),
+      P(
+        "Angkringan Lik Man (Kopi Joss)",
+        "kuliner",
+        "Jl. Wongsodirjan, Yogyakarta",
+        -7.7906,
+        110.3672,
+        "Angkringan legendaris dengan kopi arang.",
+      ),
+      P("Bakpia Pathok 25", "kuliner", "Yogyakarta", -7.7973, 110.3556),
+      P(
+        "Sate Klathak Pak Pong",
+        "kuliner",
+        "Bantul, Yogyakarta",
+        -7.8636,
+        110.3689,
+      ),
+      P("Malioboro Mall", "mall", "Yogyakarta", -7.7924, 110.3659),
+      P("Hotel Tentrem Yogyakarta", "hotel", "Yogyakarta", -7.7784, 110.3706),
+      P(
+        "Hotel Phoenix Yogyakarta",
+        "hotel",
+        "Jl. Jenderal Sudirman, Yogyakarta",
+        -7.7823,
+        110.3695,
+      ),
+      P(
+        "Stasiun Yogyakarta (Tugu)",
+        "penting",
+        "Yogyakarta",
+        -7.7896,
+        110.363,
+        "Stasiun kereta api utama Yogyakarta.",
+      ),
+      P(
+        "Terminal Giwangan",
+        "penting",
+        "Yogyakarta",
+        -7.828,
+        110.3805,
+        "Terminal bus utama Yogyakarta.",
+      ),
     ],
   },
-
   Bandung: {
     center: { lat: -6.9175, lon: 107.6191 },
     places: [
-      {
-        name: "Gedung Sate",
-        category: "budaya",
-        address: "Bandung",
-        lat: -6.9022,
-        lon: 107.6186,
-        description: "Ikon bangunan bersejarah Kota Bandung.",
-      },
-      {
-        name: "Jalan Braga",
-        category: "wisata",
-        address: "Bandung",
-        lat: -6.9184,
-        lon: 107.6098,
-        description: "Kawasan bersejarah dengan arsitektur kolonial.",
-      },
-      {
-        name: "Kawah Putih",
-        category: "wisata",
-        address: "Ciwidey, Bandung",
-        lat: -7.1663,
-        lon: 107.4022,
-      },
-      {
-        name: "Tangkuban Perahu",
-        category: "wisata",
-        address: "Lembang, Bandung",
-        lat: -6.7597,
-        lon: 107.6098,
-        description: "Gunung berapi dengan kawah ikonik.",
-      },
-      {
-        name: "Farmhouse Lembang",
-        category: "wisata",
-        address: "Lembang, Bandung",
-        lat: -6.8226,
-        lon: 107.6035,
-        description: "Wisata bertema pedesaan Eropa.",
-      },
-      {
-        name: "Floating Market Lembang",
-        category: "wisata",
-        address: "Lembang, Bandung",
-        lat: -6.8221,
-        lon: 107.6373,
-        description: "Pasar terapung dengan wahana keluarga.",
-      },
-      {
-        name: "Trans Studio Bandung",
-        category: "wisata",
-        address: "Bandung",
-        lat: -6.9254,
-        lon: 107.6382,
-      },
-      {
-        name: "Masjid Raya Bandung",
-        category: "budaya",
-        address: "Alun-Alun Bandung",
-        lat: -6.9218,
-        lon: 107.607,
-        description: "Masjid ikonik di pusat Alun-Alun Bandung.",
-      },
-      {
-        name: "Batagor Kingsley",
-        category: "kuliner",
-        address: "Bandung",
-        lat: -6.911,
-        lon: 107.6098,
-      },
-      {
-        name: "Mie Kocok Mang Dadeng",
-        category: "kuliner",
-        address: "Bandung",
-        lat: -6.9147,
-        lon: 107.6023,
-      },
-      {
-        name: "Sate Hadori",
-        category: "kuliner",
-        address: "Bandung",
-        lat: -6.9037,
-        lon: 107.6193,
-      },
-      {
-        name: "Kopi Selasar",
-        category: "cafe",
-        address: "Bandung",
-        lat: -6.889,
-        lon: 107.6135,
-      },
-      {
-        name: "Cihampelas Walk",
-        category: "mall",
-        address: "Bandung",
-        lat: -6.8919,
-        lon: 107.6058,
-      },
-      {
-        name: "Paris Van Java Mall",
-        category: "mall",
-        address: "Bandung",
-        lat: -6.8926,
-        lon: 107.5885,
-      },
-      {
-        name: "Hotel Savoy Homann",
-        category: "hotel",
-        address: "Jl. Asia Afrika, Bandung",
-        lat: -6.9179,
-        lon: 107.6088,
-        description: "Hotel bersejarah bergaya Art Deco.",
-      },
-      {
-        name: "Stasiun Bandung",
-        category: "penting",
-        address: "Bandung",
-        lat: -6.9139,
-        lon: 107.6023,
-        description: "Stasiun kereta api utama Bandung.",
-      },
-      {
-        name: "Terminal Leuwipanjang",
-        category: "penting",
-        address: "Bandung",
-        lat: -6.943,
-        lon: 107.5892,
-        description: "Terminal bus antar kota.",
-      },
+      P(
+        "Gedung Sate",
+        "budaya",
+        "Bandung",
+        -6.9022,
+        107.6186,
+        "Ikon bangunan bersejarah Kota Bandung.",
+      ),
+      P(
+        "Jalan Braga",
+        "wisata",
+        "Bandung",
+        -6.9184,
+        107.6098,
+        "Kawasan bersejarah dengan arsitektur kolonial.",
+      ),
+      P("Kawah Putih", "wisata", "Ciwidey, Bandung", -7.1663, 107.4022),
+      P(
+        "Tangkuban Perahu",
+        "wisata",
+        "Lembang, Bandung",
+        -6.7597,
+        107.6098,
+        "Gunung berapi dengan kawah ikonik.",
+      ),
+      P(
+        "Farmhouse Lembang",
+        "wisata",
+        "Lembang, Bandung",
+        -6.8226,
+        107.6035,
+        "Wisata bertema pedesaan Eropa.",
+      ),
+      P(
+        "Floating Market Lembang",
+        "wisata",
+        "Lembang, Bandung",
+        -6.8221,
+        107.6373,
+        "Pasar terapung dengan wahana keluarga.",
+      ),
+      P("Trans Studio Bandung", "wisata", "Bandung", -6.9254, 107.6382),
+      P(
+        "Masjid Raya Bandung",
+        "budaya",
+        "Alun-Alun Bandung",
+        -6.9218,
+        107.607,
+        "Masjid ikonik di pusat Alun-Alun Bandung.",
+      ),
+      P("Batagor Kingsley", "kuliner", "Bandung", -6.911, 107.6098),
+      P("Mie Kocok Mang Dadeng", "kuliner", "Bandung", -6.9147, 107.6023),
+      P("Sate Hadori", "kuliner", "Bandung", -6.9037, 107.6193),
+      P("Kopi Selasar", "cafe", "Bandung", -6.889, 107.6135),
+      P("Cihampelas Walk", "mall", "Bandung", -6.8919, 107.6058),
+      P("Paris Van Java Mall", "mall", "Bandung", -6.8926, 107.5885),
+      P(
+        "Hotel Savoy Homann",
+        "hotel",
+        "Jl. Asia Afrika, Bandung",
+        -6.9179,
+        107.6088,
+        "Hotel bersejarah bergaya Art Deco.",
+      ),
+      P(
+        "Stasiun Bandung",
+        "penting",
+        "Bandung",
+        -6.9139,
+        107.6023,
+        "Stasiun kereta api utama Bandung.",
+      ),
+      P(
+        "Terminal Leuwipanjang",
+        "penting",
+        "Bandung",
+        -6.943,
+        107.5892,
+        "Terminal bus antar kota.",
+      ),
     ],
   },
-
   Jakarta: {
     center: { lat: -6.2088, lon: 106.8456 },
     places: [
-      {
-        name: "Monumen Nasional (Monas)",
-        category: "wisata",
-        address: "Jakarta Pusat",
-        lat: -6.1754,
-        lon: 106.8272,
-        description: "Ikon utama Kota Jakarta.",
-      },
-      {
-        name: "Kota Tua Jakarta",
-        category: "budaya",
-        address: "Jakarta Barat",
-        lat: -6.1352,
-        lon: 106.8133,
-        description: "Kawasan bersejarah peninggalan Batavia.",
-      },
-      {
-        name: "Ancol Dreamland",
-        category: "wisata",
-        address: "Jakarta Utara",
-        lat: -6.1256,
-        lon: 106.8317,
-      },
-      {
-        name: "Taman Mini Indonesia Indah (TMII)",
-        category: "wisata",
-        address: "Jakarta Timur",
-        lat: -6.3024,
-        lon: 106.8951,
-        description: "Taman rekreasi budaya nusantara.",
-      },
-      {
-        name: "Ragunan Zoo",
-        category: "wisata",
-        address: "Jakarta Selatan",
-        lat: -6.3125,
-        lon: 106.8203,
-      },
-      {
-        name: "Pelabuhan Sunda Kelapa",
-        category: "penting",
-        address: "Jakarta Utara",
-        lat: -6.1252,
-        lon: 106.8106,
-        description: "Pelabuhan bersejarah era Batavia.",
-      },
-      {
-        name: "Bundaran HI",
-        category: "wisata",
-        address: "Jakarta Pusat",
-        lat: -6.1948,
-        lon: 106.823,
-        description: "Landmark ikonik Jalan Thamrin.",
-      },
-      {
-        name: "Masjid Istiqlal",
-        category: "budaya",
-        address: "Jakarta Pusat",
-        lat: -6.1702,
-        lon: 106.8307,
-        description: "Masjid nasional terbesar di Asia Tenggara.",
-      },
-      {
-        name: "Gereja Katedral Jakarta",
-        category: "budaya",
-        address: "Jakarta Pusat",
-        lat: -6.1699,
-        lon: 106.8317,
-        description: "Gereja katolik bersejarah, tepat di seberang Istiqlal.",
-      },
-      {
-        name: "Soto Betawi H. Ma'ruf",
-        category: "kuliner",
-        address: "Jakarta",
-        lat: -6.1832,
-        lon: 106.8188,
-      },
-      {
-        name: "Nasi Uduk Kebon Kacang",
-        category: "kuliner",
-        address: "Jakarta Pusat",
-        lat: -6.1897,
-        lon: 106.8172,
-      },
-      {
-        name: "Kerak Telor Pak Edi",
-        category: "kuliner",
-        address: "Jakarta",
-        lat: -6.1256,
-        lon: 106.8317,
-        description:
-          "Kuliner khas Betawi, sering dijumpai di kawasan Ancol/PRJ.",
-      },
-      {
-        name: "Sarinah",
-        category: "mall",
-        address: "Jakarta Pusat",
-        lat: -6.1896,
-        lon: 106.8226,
-        description: "Pusat perbelanjaan pertama di Indonesia.",
-      },
-      {
-        name: "Grand Indonesia Mall",
-        category: "mall",
-        address: "Jakarta Pusat",
-        lat: -6.1954,
-        lon: 106.8206,
-      },
-      {
-        name: "Plaza Indonesia",
-        category: "mall",
-        address: "Jakarta Pusat",
-        lat: -6.1934,
-        lon: 106.8222,
-      },
-      {
-        name: "Hotel Indonesia Kempinski",
-        category: "hotel",
-        address: "Jl. M.H. Thamrin, Jakarta",
-        lat: -6.1947,
-        lon: 106.8225,
-      },
-      {
-        name: "Stasiun Gambir",
-        category: "penting",
-        address: "Jakarta Pusat",
-        lat: -6.1766,
-        lon: 106.8306,
-        description: "Stasiun kereta api utama Jakarta.",
-      },
-      {
-        name: "Terminal Kampung Rambutan",
-        category: "penting",
-        address: "Jakarta Timur",
-        lat: -6.3123,
-        lon: 106.8631,
-        description: "Terminal bus antar kota.",
-      },
-      {
-        name: "Bandara Soekarno-Hatta",
-        category: "penting",
-        address: "Tangerang (melayani Jakarta)",
-        lat: -6.1256,
-        lon: 106.6559,
-        description: "Bandara internasional utama.",
-      },
+      P(
+        "Monumen Nasional (Monas)",
+        "wisata",
+        "Jakarta Pusat",
+        -6.1754,
+        106.8272,
+        "Ikon utama Kota Jakarta.",
+      ),
+      P(
+        "Kota Tua Jakarta",
+        "budaya",
+        "Jakarta Barat",
+        -6.1352,
+        106.8133,
+        "Kawasan bersejarah peninggalan Batavia.",
+      ),
+      P("Ancol Dreamland", "wisata", "Jakarta Utara", -6.1256, 106.8317),
+      P(
+        "Taman Mini Indonesia Indah (TMII)",
+        "wisata",
+        "Jakarta Timur",
+        -6.3024,
+        106.8951,
+        "Taman rekreasi budaya nusantara.",
+      ),
+      P("Ragunan Zoo", "wisata", "Jakarta Selatan", -6.3125, 106.8203),
+      P(
+        "Pelabuhan Sunda Kelapa",
+        "penting",
+        "Jakarta Utara",
+        -6.1252,
+        106.8106,
+        "Pelabuhan bersejarah era Batavia.",
+      ),
+      P(
+        "Bundaran HI",
+        "wisata",
+        "Jakarta Pusat",
+        -6.1948,
+        106.823,
+        "Landmark ikonik Jalan Thamrin.",
+      ),
+      P(
+        "Masjid Istiqlal",
+        "budaya",
+        "Jakarta Pusat",
+        -6.1702,
+        106.8307,
+        "Masjid nasional terbesar di Asia Tenggara.",
+      ),
+      P(
+        "Gereja Katedral Jakarta",
+        "budaya",
+        "Jakarta Pusat",
+        -6.1699,
+        106.8317,
+        "Gereja katolik bersejarah, tepat di seberang Istiqlal.",
+      ),
+      P("Soto Betawi H. Ma'ruf", "kuliner", "Jakarta", -6.1832, 106.8188),
+      P(
+        "Nasi Uduk Kebon Kacang",
+        "kuliner",
+        "Jakarta Pusat",
+        -6.1897,
+        106.8172,
+      ),
+      P(
+        "Kerak Telor Pak Edi",
+        "kuliner",
+        "Jakarta",
+        -6.1256,
+        106.8317,
+        "Kuliner khas Betawi, sering dijumpai di kawasan Ancol/PRJ.",
+      ),
+      P(
+        "Sarinah",
+        "mall",
+        "Jakarta Pusat",
+        -6.1896,
+        106.8226,
+        "Pusat perbelanjaan pertama di Indonesia.",
+      ),
+      P("Grand Indonesia Mall", "mall", "Jakarta Pusat", -6.1954, 106.8206),
+      P("Plaza Indonesia", "mall", "Jakarta Pusat", -6.1934, 106.8222),
+      P(
+        "Hotel Indonesia Kempinski",
+        "hotel",
+        "Jl. M.H. Thamrin, Jakarta",
+        -6.1947,
+        106.8225,
+      ),
+      P(
+        "Stasiun Gambir",
+        "penting",
+        "Jakarta Pusat",
+        -6.1766,
+        106.8306,
+        "Stasiun kereta api utama Jakarta.",
+      ),
+      P(
+        "Terminal Kampung Rambutan",
+        "penting",
+        "Jakarta Timur",
+        -6.3123,
+        106.8631,
+        "Terminal bus antar kota.",
+      ),
+      P(
+        "Bandara Soekarno-Hatta",
+        "penting",
+        "Tangerang (melayani Jakarta)",
+        -6.1256,
+        106.6559,
+        "Bandara internasional utama.",
+      ),
     ],
   },
 };
 
-// Ratakan seluruh data kurasi kota menjadi satu array, masing-masing tempat diberi label kota asalnya
+// Ratakan data kurasi seluruh kota menjadi satu array
 const ALL_CURATED_PLACES = Object.entries(CURATED_CITIES).flatMap(
   ([cityName, cityData]) =>
     cityData.places.map((p) => ({
@@ -2224,16 +1821,13 @@ const ALL_CURATED_PLACES = Object.entries(CURATED_CITIES).flatMap(
     })),
 );
 
-// Batas koordinat wilayah Indonesia (bounding box, dengan sedikit toleransi)
-// Lintang: -11.5 (selatan, Pulau Rote) s.d. 6.5 (utara, Pulau Weh)
-// Bujur: 94.5 (barat, Sabang) s.d. 141.5 (timur, Merauke)
+// Batas koordinat wilayah Indonesia (bounding box dengan sedikit toleransi)
 const INDONESIA_BOUNDS = {
   minLat: -11.5,
   maxLat: 6.5,
   minLon: 94.5,
   maxLon: 141.5,
 };
-
 function isInsideIndonesia(lat, lon) {
   return (
     lat >= INDONESIA_BOUNDS.minLat &&
@@ -2243,17 +1837,16 @@ function isInsideIndonesia(lat, lon) {
   );
 }
 
-/* ============ WAKTU RELATIF ("3 menit yang lalu") ============ */
+/* ============ WAKTU RELATIF ============ */
 function formatRelativeTime(timestamp) {
-  const diffSec = Math.floor((Date.now() - timestamp) / 1000);
-  if (diffSec < 10) return "baru saja";
-  if (diffSec < 60) return `${diffSec} detik yang lalu`;
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin} menit yang lalu`;
-  const diffHour = Math.floor(diffMin / 60);
-  if (diffHour < 24) return `${diffHour} jam yang lalu`;
-  const diffDay = Math.floor(diffHour / 24);
-  return `${diffDay} hari yang lalu`;
+  const s = Math.floor((Date.now() - timestamp) / 1000);
+  if (s < 10) return "baru saja";
+  if (s < 60) return `${s} detik yang lalu`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} menit yang lalu`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} jam yang lalu`;
+  return `${Math.floor(h / 24)} hari yang lalu`;
 }
 
 /* ============ KUALITAS AKURASI GPS ============ */
@@ -2270,13 +1863,11 @@ function getAccuracyInfo(accuracy) {
   return { label: `Akurasi rendah (±${Math.round(accuracy)} m)`, cls: "poor" };
 }
 
-/* ============ REVERSE GEOCODING (koordinat → nama tempat) ============
-   Memakai Nominatim (OpenStreetMap) untuk mengubah lat/lon menjadi nama
-   kecamatan/kota yang mudah dibaca, dengan bahasa Indonesia bila tersedia. */
+/* ============ REVERSE GEOCODING (Nominatim / OpenStreetMap) ============ */
 async function reverseGeocode(lat, lon) {
   try {
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=14&accept-language=id`,
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=16&accept-language=id`,
     );
     if (!res.ok) throw new Error("reverse geocode failed");
     const data = await res.json();
@@ -2286,7 +1877,6 @@ async function reverseGeocode(lat, lon) {
       a.city || a.town || a.regency || a.county,
       a.state,
     ].filter(Boolean);
-    // Hilangkan duplikat berurutan (mis. kecamatan sama dengan nama kota)
     const unique = parts.filter((p, i) => p !== parts[i - 1]);
     return unique.length ? unique.join(", ") : data.display_name || null;
   } catch (e) {
@@ -2294,7 +1884,7 @@ async function reverseGeocode(lat, lon) {
   }
 }
 
-/* ============ STATUS TOMBOL DETEKSI LOKASI (loading state) ============ */
+/* ============ STATUS TOMBOL DETEKSI LOKASI ============ */
 let isDetectingLocation = false;
 function setLocationButtonsLoading(loading) {
   isDetectingLocation = loading;
@@ -2309,128 +1899,30 @@ function setLocationButtonsLoading(loading) {
   });
 }
 
-function detectLocation() {
-  if (isDetectingLocation) return; // cegah klik ganda saat masih memproses
-
-  if (!navigator.geolocation) {
-    showToast("Browser kamu tidak mendukung fitur lokasi.", "error");
-    return;
-  }
-
-  setLocationButtonsLoading(true);
-  showToast("Meminta izin akses lokasi...", "info", "📡");
-
-  navigator.geolocation.getCurrentPosition(
-    async (position) => {
-      const lat = position.coords.latitude;
-      const lon = position.coords.longitude;
-      const accuracy = position.coords.accuracy;
-
-      // Fitur deteksi lokasi hanya berlaku untuk pengguna yang berada di wilayah Indonesia
-      if (!isInsideIndonesia(lat, lon)) {
-        setLocationButtonsLoading(false);
-        showToast(
-          "Fitur deteksi lokasi hanya tersedia untuk pengguna di Indonesia.",
-          "error",
-          "🇮🇩",
-        );
-        renderPlacesStatusOutsideIndonesia();
-        return;
-      }
-
-      // Simpan lokasi dulu (tanpa alamat), supaya UI responsif tanpa menunggu reverse geocoding
-      lsSet(LS_KEYS.LAST_LOCATION, {
-        lat,
-        lon,
-        accuracy,
-        address: null,
-        timestamp: Date.now(),
-      });
-      renderDashboard();
-      renderPlacesStatus();
-      fetchNearbyPlaces(lat, lon);
-
-      const accInfo = getAccuracyInfo(accuracy);
-      showToast(`Lokasi berhasil ditemukan! ${accInfo.label}`, "success", "📍");
-      setLocationButtonsLoading(false);
-
-      // Lengkapi dengan nama tempat (kecamatan/kota) secara asinkron
-      const address = await reverseGeocode(lat, lon);
-      if (address) {
-        const current = lsGet(LS_KEYS.LAST_LOCATION, null);
-        if (current) {
-          lsSet(LS_KEYS.LAST_LOCATION, { ...current, address });
-          renderDashboard();
-          renderPlacesStatus();
-        }
-      }
-    },
-    (error) => {
-      setLocationButtonsLoading(false);
-      // Pesan disesuaikan dengan jenis error dari browser
-      switch (error.code) {
-        case error.PERMISSION_DENIED:
-          showToast(
-            "Izin lokasi ditolak. Aktifkan izin lokasi di pengaturan browser untuk memakai fitur ini.",
-            "error",
-            "🚫",
-          );
-          break;
-        case error.POSITION_UNAVAILABLE:
-          showToast(
-            "Lokasi tidak dapat ditentukan saat ini. Pastikan GPS/lokasi perangkat aktif.",
-            "error",
-            "📵",
-          );
-          break;
-        case error.TIMEOUT:
-          showToast(
-            "Waktu deteksi lokasi habis. Periksa sinyal GPS dan coba lagi.",
-            "error",
-            "⏱️",
-          );
-          break;
-        default:
-          showToast(
-            "Gagal mendapatkan lokasi. Silakan coba lagi.",
-            "error",
-            "🚫",
-          );
-      }
-    },
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
-  );
-}
-
-// Salin koordinat ke clipboard
 async function copyCoordinates(lat, lon) {
-  const text = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
   try {
-    await navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(`${lat.toFixed(6)}, ${lon.toFixed(6)}`);
     showToast("Koordinat disalin ke clipboard.", "success", "📋");
   } catch (e) {
     showToast("Gagal menyalin koordinat.", "error");
   }
 }
 
-// Tampilkan pesan khusus di halaman Tempat Sekitar jika lokasi pengguna di luar Indonesia
 function renderPlacesStatusOutsideIndonesia() {
   const box = document.getElementById("placesStatusBox");
-  if (box) {
+  if (box)
     box.innerHTML =
       '<p class="empty-text">📍 Lokasimu terdeteksi di luar Indonesia. Fitur Tempat Sekitar hanya tersedia untuk wilayah Indonesia.</p>';
-  }
   const grid = document.getElementById("placesGrid");
   if (grid) grid.innerHTML = "";
 }
 
-// Bangun blok HTML kartu status lokasi (dipakai bersama oleh dashboard & halaman Tempat Sekitar)
 function buildLocationStatusHTML(loc, detectBtnId, detectBtnLabel) {
   const accInfo = getAccuracyInfo(loc.accuracy);
   return `
     <div class="location-active">
       <div class="location-radar"><span class="radar-dot"></span></div>
-      <span class="loc-badge">📡 Lokasi Aktif</span>
+      <span class="loc-badge">📡 ${loc.manual ? "Lokasi Manual" : "Lokasi Aktif"}</span>
       ${loc.address ? `<p class="location-address">${escapeHtml(loc.address)}</p>` : '<p class="location-address muted">Mencari nama tempat...</p>'}
       <p class="location-coords">Lat: ${loc.lat.toFixed(5)}, Lon: ${loc.lon.toFixed(5)}</p>
       <span class="accuracy-badge ${accInfo.cls}">${accInfo.label}</span>
@@ -2444,23 +1936,21 @@ function buildLocationStatusHTML(loc, detectBtnId, detectBtnLabel) {
   `;
 }
 
-// Pasang event listener tombol-tombol pada kartu status lokasi
 function wireLocationStatusButtons(container, loc, detectBtnId) {
   const detectBtn = container.querySelector("#" + detectBtnId);
   if (detectBtn) detectBtn.addEventListener("click", detectLocation);
-
   const copyBtn = container.querySelector('[data-action="copy-coords"]');
   if (copyBtn)
     copyBtn.addEventListener("click", () => copyCoordinates(loc.lat, loc.lon));
-
   const mapsBtn = container.querySelector('[data-action="open-maps"]');
   if (mapsBtn)
-    mapsBtn.addEventListener("click", () => {
+    mapsBtn.addEventListener("click", () =>
       window.open(
         `https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lon}`,
         "_blank",
-      );
-    });
+        "noopener,noreferrer",
+      ),
+    );
 }
 
 function renderPlacesStatus() {
@@ -2479,33 +1969,159 @@ function renderPlacesStatus() {
   wireLocationStatusButtons(box, loc, "btnRefreshLocationPlaces");
 }
 
-// Tampilkan data kurasi kota (semua kota atau kota terpilih) secara default, tanpa perlu deteksi lokasi dulu
+// Tampilkan data kurasi seluruh kota sebagai rekomendasi awal (tanpa deteksi lokasi)
 function renderCuratedPlacesDefault() {
   currentPlaces = ALL_CURATED_PLACES.map((p) => ({ ...p, distance: null }));
   renderPlacesGrid();
 }
 
+/* ---------- Ambil pembacaan GPS terbaik (akurasi terkecil) ---------- */
+function getBestPosition(
+  onSuccess,
+  onError,
+  { maxWaitMs = 12000, goodEnoughM = 30 } = {},
+) {
+  let best = null,
+    done = false,
+    watchId = null,
+    timer = null;
+
+  const finish = () => {
+    if (done) return;
+    done = true;
+    navigator.geolocation.clearWatch(watchId);
+    clearTimeout(timer);
+    onSuccess(best);
+  };
+
+  watchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      if (!best || pos.coords.accuracy < best.coords.accuracy) best = pos;
+      if (pos.coords.accuracy <= goodEnoughM) finish();
+    },
+    (err) => {
+      if (done) return;
+      if (best) return finish();
+      done = true;
+      navigator.geolocation.clearWatch(watchId);
+      clearTimeout(timer);
+      onError(err);
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+  );
+  timer = setTimeout(() => {
+    if (best) finish();
+  }, maxWaitMs);
+}
+
+/* ---------- Deteksi lokasi pengguna ---------- */
+function detectLocation() {
+  if (isDetectingLocation) return;
+
+  if (!navigator.geolocation) {
+    showToast("Browser kamu tidak mendukung fitur lokasi.", "error");
+    return;
+  }
+
+  setLocationButtonsLoading(true);
+  showToast("Mengambil lokasi paling akurat (maks. 12 detik)...", "info", "📡");
+
+  getBestPosition(
+    async (position) => {
+      const lat = position.coords.latitude;
+      const lon = position.coords.longitude;
+      const accuracy = position.coords.accuracy;
+
+      if (!isInsideIndonesia(lat, lon)) {
+        setLocationButtonsLoading(false);
+        showToast(
+          "Fitur deteksi lokasi hanya tersedia untuk pengguna di Indonesia.",
+          "error",
+          "🇮🇩",
+        );
+        renderPlacesStatusOutsideIndonesia();
+        return;
+      }
+
+      lsSet(LS_KEYS.LAST_LOCATION, {
+        lat,
+        lon,
+        accuracy,
+        address: null,
+        timestamp: Date.now(),
+      });
+      renderDashboard();
+      renderPlacesStatus();
+      fetchNearbyPlaces(lat, lon);
+
+      if (accuracy > 1000) {
+        showToast(
+          `Akurasi lokasi rendah (±${Math.round(accuracy)} m). Kemungkinan lokasi dari jaringan/IP, coba di HP dengan GPS aktif.`,
+          "error",
+          "⚠️",
+        );
+      } else {
+        showToast(
+          `Lokasi berhasil ditemukan! ${getAccuracyInfo(accuracy).label}`,
+          "success",
+          "📍",
+        );
+      }
+      setLocationButtonsLoading(false);
+
+      const address = await reverseGeocode(lat, lon);
+      if (address) {
+        const current = lsGet(LS_KEYS.LAST_LOCATION, null);
+        if (current) {
+          lsSet(LS_KEYS.LAST_LOCATION, { ...current, address });
+          renderDashboard();
+          renderPlacesStatus();
+        }
+      }
+    },
+    (error) => {
+      setLocationButtonsLoading(false);
+      const pesan = {
+        1: [
+          "Izin lokasi ditolak. Aktifkan izin lokasi di pengaturan browser.",
+          "🚫",
+        ],
+        2: [
+          "Lokasi tidak dapat ditentukan. Pastikan GPS/lokasi perangkat aktif.",
+          "📵",
+        ],
+        3: [
+          "Waktu deteksi lokasi habis. Periksa sinyal GPS dan coba lagi.",
+          "⏱️",
+        ],
+      }[error.code] || ["Gagal mendapatkan lokasi. Silakan coba lagi.", "🚫"];
+      showToast(pesan[0], "error", pesan[1]);
+    },
+  );
+}
+
+/* ---------- Tempat sekitar: kurasi + OpenStreetMap ---------- */
 async function fetchNearbyPlaces(lat, lon) {
   const grid = document.getElementById("placesGrid");
   grid.innerHTML =
     '<p class="empty-text">🔎 Mencari tempat menarik di sekitarmu...</p>';
 
-  // Data kurasi seluruh kota selalu disertakan (dengan jarak dari lokasi pengguna)
   const curatedWithDistance = ALL_CURATED_PLACES.map((p) => ({
     ...p,
     distance: haversineDistance(lat, lon, p.lat, p.lon),
   }));
 
-  const radius = 2000; // 2 km
+  const radius = 2000;
+  // nwr = node + way + relation, supaya taman/mall/hotel berbentuk area ikut terambil
   const query = `
     [out:json][timeout:25];
     (
-      node["tourism"="attraction"](around:${radius},${lat},${lon});
-      node["amenity"="restaurant"](around:${radius},${lat},${lon});
-      node["amenity"="cafe"](around:${radius},${lat},${lon});
-      node["tourism"="hotel"](around:${radius},${lat},${lon});
-      node["leisure"="park"](around:${radius},${lat},${lon});
-      node["shop"="mall"](around:${radius},${lat},${lon});
+      nwr["tourism"="attraction"](around:${radius},${lat},${lon});
+      nwr["amenity"="restaurant"](around:${radius},${lat},${lon});
+      nwr["amenity"="cafe"](around:${radius},${lat},${lon});
+      nwr["tourism"="hotel"](around:${radius},${lat},${lon});
+      nwr["leisure"="park"](around:${radius},${lat},${lon});
+      nwr["shop"="mall"](around:${radius},${lat},${lon});
     );
     out center 60;
   `;
@@ -2529,18 +2145,22 @@ async function fetchNearbyPlaces(lat, lon) {
         else if (el.tags.leisure === "park") category = "taman";
         else if (el.tags.shop === "mall") category = "mall";
 
-        const plat = el.lat || (el.center && el.center.lat);
-        const plon = el.lon || (el.center && el.center.lon);
+        const plat = el.lat ?? el.center?.lat;
+        const plon = el.lon ?? el.center?.lon;
         return {
-          id: "osm-" + el.id,
+          id: "osm-" + el.type + "-" + el.id,
           source: "api",
           name: el.tags.name,
           category,
           lat: plat,
           lon: plon,
-          distance: haversineDistance(lat, lon, plat, plon),
+          distance:
+            plat != null && plon != null
+              ? haversineDistance(lat, lon, plat, plon)
+              : null,
         };
-      });
+      })
+      .filter((p) => p.lat != null && p.lon != null);
   } catch (err) {
     showToast(
       "Gagal mengambil data tempat sekitar dari OpenStreetMap.",
@@ -2548,7 +2168,6 @@ async function fetchNearbyPlaces(lat, lon) {
     );
   }
 
-  // Gabungkan data kurasi Kota Probolinggo dengan hasil live dari Overpass API, urutkan berdasarkan jarak
   currentPlaces = [...curatedWithDistance, ...apiPlaces]
     .sort((a, b) => a.distance - b.distance)
     .slice(0, 40);
@@ -2556,6 +2175,7 @@ async function fetchNearbyPlaces(lat, lon) {
   renderPlacesGrid();
 }
 
+/* ---------- Kartu tempat + tombol Google Maps ---------- */
 function renderPlacesGrid() {
   const grid = document.getElementById("placesGrid");
   grid.innerHTML = "";
@@ -2567,7 +2187,6 @@ function renderPlacesGrid() {
     );
   }
   if (currentCityFilter !== "all") {
-    // Filter kota hanya berlaku untuk data kurasi; hasil live dari OpenStreetMap tetap ditampilkan
     filtered = filtered.filter(
       (p) => p.source !== "curated" || p.city === currentCityFilter,
     );
@@ -2582,10 +2201,10 @@ function renderPlacesGrid() {
   filtered.forEach((place) => {
     const info = CATEGORY_INFO[place.category];
     const isCurated = place.source === "curated";
-    const distanceOrAddress =
-      place.distance !== null && place.distance !== undefined
-        ? `📏 ${formatDistance(place.distance)} dari lokasimu`
-        : `📍 ${escapeHtml(place.address || place.city || "-")}`;
+    const hasDistance = place.distance !== null && place.distance !== undefined;
+    const distanceOrAddress = hasDistance
+      ? `📏 ${isCurated ? "≈ " : ""}${formatDistance(place.distance)} dari lokasimu${isCurated ? " (perkiraan)" : ""}`
+      : `📍 ${escapeHtml(place.address || place.city || "-")}`;
 
     const card = document.createElement("div");
     card.className = "place-card fade-in";
@@ -2599,13 +2218,26 @@ function renderPlacesGrid() {
         <button class="btn btn-primary btn-sm" data-action="add-trip">+ Trip</button>
       </div>
     `;
-    // Tombol "Lihat Peta" otomatis membuka Google Maps pada koordinat tempat tersebut
+
+    // Data kurasi: koordinat hanya perkiraan -> cari lewat nama + alamat + kota.
+    // Data OpenStreetMap: koordinat asli -> pakai lat,lon.
     card
       .querySelector('[data-action="view-map"]')
       .addEventListener("click", () => {
-        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lon}`;
-        window.open(mapsUrl, "_blank");
+        const mapsQuery = isCurated
+          ? [
+              ...new Set(
+                [place.name, place.address, place.city].filter(Boolean),
+              ),
+            ].join(", ")
+          : `${place.lat},${place.lon}`;
+        window.open(
+          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`,
+          "_blank",
+          "noopener,noreferrer",
+        );
       });
+
     card
       .querySelector('[data-action="add-trip"]')
       .addEventListener("click", () => {
@@ -2641,7 +2273,6 @@ function renderBudget() {
   const entries = lsGet(LS_KEYS.BUDGET, []);
   const totalPlan = trips.reduce((sum, t) => sum + Number(t.budget), 0);
   const totalSpent = entries.reduce((sum, b) => sum + Number(b.amount), 0);
-  const remaining = totalPlan - totalSpent;
   const pct =
     totalPlan > 0
       ? Math.min(100, Math.round((totalSpent / totalPlan) * 100))
@@ -2651,8 +2282,9 @@ function renderBudget() {
     formatRupiah(totalPlan);
   document.getElementById("budgetTotalSpent").textContent =
     formatRupiah(totalSpent);
-  document.getElementById("budgetRemaining").textContent =
-    formatRupiah(remaining);
+  document.getElementById("budgetRemaining").textContent = formatRupiah(
+    totalPlan - totalSpent,
+  );
   document.getElementById("budgetProgressText").textContent = pct + "%";
   document.getElementById("budgetProgressFill").style.width = pct + "%";
 
@@ -2710,7 +2342,6 @@ function renderPacking() {
       '<p class="empty-text">Belum ada barang. Tambahkan barang bawaanmu!</p>';
     return;
   }
-
   packing.forEach((item) => {
     const el = document.createElement("div");
     el.className = "packing-item fade-in" + (item.checked ? " checked" : "");
@@ -2720,10 +2351,12 @@ function renderPacking() {
       <button class="packing-item-delete" title="Hapus">🗑️</button>
     `;
     el.querySelector(".packing-checkbox").addEventListener("click", () => {
-      const items = lsGet(LS_KEYS.PACKING, []).map((p) =>
-        p.id === item.id ? { ...p, checked: !p.checked } : p,
+      lsSet(
+        LS_KEYS.PACKING,
+        lsGet(LS_KEYS.PACKING, []).map((p) =>
+          p.id === item.id ? { ...p, checked: !p.checked } : p,
+        ),
       );
-      lsSet(LS_KEYS.PACKING, items);
       renderPacking();
       renderDashboard();
     });
@@ -2741,7 +2374,7 @@ function renderPacking() {
 }
 
 /* =============================================================
-   CATATAN (NOTES)
+   CATATAN
    ============================================================= */
 function renderNotes() {
   const notes = lsGet(LS_KEYS.NOTES, []);
@@ -2787,35 +2420,32 @@ function performGlobalSearch(query) {
     if (
       trip.name.toLowerCase().includes(query) ||
       trip.destination.toLowerCase().includes(query)
-    ) {
+    )
       results.push({
         type: "Trip",
         title: `${trip.name} — ${trip.destination}`,
         page: "itinerary",
         tripId: trip.id,
       });
-    }
   });
   getItinerary().forEach((item) => {
     if (
       item.activity.toLowerCase().includes(query) ||
       (item.location || "").toLowerCase().includes(query)
-    ) {
+    )
       results.push({
         type: "Itinerary",
         title: item.activity,
         page: "itinerary",
         tripId: item.tripId,
       });
-    }
   });
   lsGet(LS_KEYS.NOTES, []).forEach((note) => {
     if (
       note.title.toLowerCase().includes(query) ||
       note.content.toLowerCase().includes(query)
-    ) {
+    )
       results.push({ type: "Catatan", title: note.title, page: "notes" });
-    }
   });
 
   resultsBox.innerHTML = "";
@@ -2845,10 +2475,12 @@ function performGlobalSearch(query) {
 /* =============================================================
    EVENT LISTENERS (dijalankan setelah DOM siap)
    ============================================================= */
+const $ = (id) => document.getElementById(id);
+
 document.addEventListener("DOMContentLoaded", () => {
   applyDarkMode();
 
-  // Cek sesi login: sesi kini berisi email pengguna yang sedang masuk
+  // Sesi login berisi email pengguna yang sedang masuk
   const user = lsGet(LS_KEYS.USER, null);
   const session = lsGet(LS_KEYS.SESSION, null);
   if (user && session && typeof session === "string" && findAccount(session)) {
@@ -2858,92 +2490,68 @@ document.addEventListener("DOMContentLoaded", () => {
     initAuthPage();
   }
 
-  /* ---------- SIDEBAR NAVIGATION ---------- */
-  document.querySelectorAll(".nav-item[data-page]").forEach((btn) => {
-    btn.addEventListener("click", () => goToPage(btn.dataset.page));
-  });
-
-  /* ---------- HAMBURGER / MOBILE SIDEBAR ---------- */
-  document.getElementById("hamburgerBtn").addEventListener("click", () => {
-    document.getElementById("sidebar").classList.add("open");
-    document.getElementById("sidebarOverlay").classList.add("show");
-  });
-  document.getElementById("sidebarOverlay").addEventListener("click", () => {
-    document.getElementById("sidebar").classList.remove("open");
-    document.getElementById("sidebarOverlay").classList.remove("show");
-  });
-
-  /* ---------- DARK MODE ---------- */
+  /* ---------- SIDEBAR & NAVIGASI ---------- */
   document
-    .getElementById("darkModeToggleSidebar")
-    .addEventListener("click", toggleDarkMode);
-  document
-    .getElementById("darkModeToggleTop")
-    .addEventListener("click", toggleDarkMode);
-
-  /* ---------- LOGOUT ---------- */
-  document.getElementById("logoutBtn").addEventListener("click", () => {
+    .querySelectorAll(".nav-item[data-page]")
+    .forEach((btn) =>
+      btn.addEventListener("click", () => goToPage(btn.dataset.page)),
+    );
+  $("hamburgerBtn").addEventListener("click", () => {
+    $("sidebar").classList.add("open");
+    $("sidebarOverlay").classList.add("show");
+  });
+  $("sidebarOverlay").addEventListener("click", () => {
+    $("sidebar").classList.remove("open");
+    $("sidebarOverlay").classList.remove("show");
+  });
+  $("darkModeToggleSidebar").addEventListener("click", toggleDarkMode);
+  $("darkModeToggleTop").addEventListener("click", toggleDarkMode);
+  $("logoutBtn").addEventListener("click", () => {
     if (confirm("Yakin ingin logout?")) logout();
   });
 
   /* ---------- PROFIL ---------- */
-  document
-    .getElementById("btnEditProfile")
-    .addEventListener("click", openEditProfile);
-  document.getElementById("formEditProfile").addEventListener("submit", (e) => {
+  $("btnEditProfile").addEventListener("click", openEditProfile);
+  $("formEditProfile").addEventListener("submit", (e) => {
     e.preventDefault();
-    const name = document.getElementById("editName").value.trim();
-    const emailInput = document.getElementById("editEmail").value;
-    const phone = document.getElementById("editPhone").value.trim();
-    const address = document.getElementById("editAddress").value.trim();
+    const name = $("editName").value.trim();
+    const phone = $("editPhone").value.trim();
+    const address = $("editAddress").value.trim();
     const currentUser = lsGet(LS_KEYS.USER, {});
 
-    // Validasi sama ketatnya dengan saat mendaftar
-    if (name.length < 3) {
-      showToast("Nama lengkap minimal 3 karakter.", "error");
-      return;
-    }
-    const emailCheck = validateEmail(emailInput);
-    if (!emailCheck.valid) {
-      showToast(emailCheck.message, "error");
-      return;
-    }
-    // Email baru tidak boleh bentrok dengan akun lain
+    if (name.length < 3)
+      return showToast("Nama lengkap minimal 3 karakter.", "error");
+    const emailCheck = validateEmail($("editEmail").value);
+    if (!emailCheck.valid) return showToast(emailCheck.message, "error");
     if (
       emailCheck.email !== currentUser.email.toLowerCase() &&
       findAccount(emailCheck.email)
-    ) {
-      showToast("Email tersebut sudah dipakai akun lain.", "error");
-      return;
-    }
+    )
+      return showToast("Email tersebut sudah dipakai akun lain.", "error");
     const phoneClean = phone.replace(/[\s-]/g, "");
-    if (!/^(\+62|62|0)8[1-9][0-9]{6,11}$/.test(phoneClean)) {
-      showToast("Nomor HP tidak valid. Gunakan format 08xxxxxxxxxx.", "error");
-      return;
-    }
-    if (address.length < 10) {
-      showToast("Alamat terlalu singkat, minimal 10 karakter.", "error");
-      return;
-    }
+    if (!/^(\+62|62|0)8[1-9][0-9]{6,11}$/.test(phoneClean))
+      return showToast(
+        "Nomor HP tidak valid. Gunakan format 08xxxxxxxxxx.",
+        "error",
+      );
+    if (address.length < 10)
+      return showToast("Alamat terlalu singkat, minimal 10 karakter.", "error");
 
-    // Perbarui data akun yang tersimpan (password tetap tidak berubah)
-    const accounts = getAccounts().map((a) =>
-      a.email.toLowerCase() === currentUser.email.toLowerCase()
-        ? { ...a, name, email: emailCheck.email, phone: phoneClean, address }
-        : a,
+    saveAccounts(
+      getAccounts().map((a) =>
+        a.email.toLowerCase() === currentUser.email.toLowerCase()
+          ? { ...a, name, email: emailCheck.email, phone: phoneClean, address }
+          : a,
+      ),
     );
-    saveAccounts(accounts);
-
-    const updated = {
+    lsSet(LS_KEYS.USER, {
       ...currentUser,
       name,
       email: emailCheck.email,
       phone: phoneClean,
       address,
-    };
-    lsSet(LS_KEYS.USER, updated);
+    });
     lsSet(LS_KEYS.SESSION, emailCheck.email);
-
     renderProfile();
     updateNavUser();
     closeModal("modalEditProfile");
@@ -2951,37 +2559,30 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   /* ---------- DASHBOARD SHORTCUTS ---------- */
-  document
-    .getElementById("btnCariSekitar")
-    .addEventListener("click", () => goToPage("places"));
-  document
-    .getElementById("btnLihatItinerary")
-    .addEventListener("click", () => goToPage("itinerary"));
-  document
-    .getElementById("btnNewTripDash")
-    .addEventListener("click", () => openModal("modalTrip"));
-  // Catatan: tombol deteksi lokasi di dashboard sudah dipasang otomatis oleh renderDashboard()
+  $("btnCariSekitar").addEventListener("click", () => goToPage("places"));
+  $("btnLihatItinerary").addEventListener("click", () => goToPage("itinerary"));
+  $("btnNewTripDash").addEventListener("click", () => openModal("modalTrip"));
 
-  /* ---------- MODAL: TRIP BARU ---------- */
-  document.getElementById("formTrip").addEventListener("submit", (e) => {
+  /* ---------- TRIP BARU ---------- */
+  $("formTrip").addEventListener("submit", (e) => {
     e.preventDefault();
-    const start = document.getElementById("tripStart").value;
-    const end = document.getElementById("tripEnd").value;
-    if (new Date(end) < new Date(start)) {
-      showToast("Tanggal selesai tidak boleh sebelum tanggal mulai.", "error");
-      return;
-    }
-    const trip = {
+    const start = $("tripStart").value;
+    const end = $("tripEnd").value;
+    if (new Date(end) < new Date(start))
+      return showToast(
+        "Tanggal selesai tidak boleh sebelum tanggal mulai.",
+        "error",
+      );
+    const trips = getTrips();
+    trips.push({
       id: uid(),
-      name: document.getElementById("tripName").value.trim(),
-      destination: document.getElementById("tripDestination").value.trim(),
+      name: $("tripName").value.trim(),
+      destination: $("tripDestination").value.trim(),
       start,
       end,
-      budget: Number(document.getElementById("tripBudget").value),
+      budget: Number($("tripBudget").value),
       createdAt: Date.now(),
-    };
-    const trips = getTrips();
-    trips.push(trip);
+    });
     saveTrips(trips);
     e.target.reset();
     closeModal("modalTrip");
@@ -2992,28 +2593,22 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   /* ---------- ITINERARY ---------- */
-  document
-    .getElementById("itineraryTripSelect")
-    .addEventListener("change", renderItinerary);
-  document.getElementById("btnAddItinerary").addEventListener("click", () => {
-    if (!document.getElementById("itineraryTripSelect").value) {
-      showToast("Buat trip terlebih dahulu.", "error");
-      return;
-    }
+  $("itineraryTripSelect").addEventListener("change", renderItinerary);
+  $("btnAddItinerary").addEventListener("click", () => {
+    if (!$("itineraryTripSelect").value)
+      return showToast("Buat trip terlebih dahulu.", "error");
     openModal("modalItinerary");
   });
-  document.getElementById("formItinerary").addEventListener("submit", (e) => {
+  $("formItinerary").addEventListener("submit", (e) => {
     e.preventDefault();
-    const tripId = document.getElementById("itineraryTripSelect").value;
-    const item = {
-      id: uid(),
-      tripId,
-      time: document.getElementById("itnTime").value,
-      activity: document.getElementById("itnActivity").value.trim(),
-      location: document.getElementById("itnLocation").value.trim(),
-    };
     const list = getItinerary();
-    list.push(item);
+    list.push({
+      id: uid(),
+      tripId: $("itineraryTripSelect").value,
+      time: $("itnTime").value,
+      activity: $("itnActivity").value.trim(),
+      location: $("itnLocation").value.trim(),
+    });
     saveItinerary(list);
     e.target.reset();
     closeModal("modalItinerary");
@@ -3022,13 +2617,10 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   /* ---------- TEMPAT SEKITAR ---------- */
-  document
-    .getElementById("btnDetectLocationPlaces")
-    .addEventListener("click", detectLocation);
+  $("btnDetectLocationPlaces").addEventListener("click", detectLocation);
   renderPlacesStatus();
 
-  // Isi dropdown pilihan kota (Semua Kota + tiap kota yang ada di data kurasi)
-  const citySelect = document.getElementById("placesCitySelect");
+  const citySelect = $("placesCitySelect");
   citySelect.innerHTML =
     '<option value="all">Semua Kota</option>' +
     Object.keys(CURATED_CITIES)
@@ -3049,50 +2641,42 @@ document.addEventListener("DOMContentLoaded", () => {
       renderPlacesGrid();
     });
   });
-  // Jika sudah pernah deteksi lokasi sebelumnya, muat ulang tempat sekitar (kurasi seluruh kota + live API).
-  // Jika belum, tampilkan dulu data kurasi seluruh kota sebagai rekomendasi awal.
-  const savedLoc = lsGet(LS_KEYS.LAST_LOCATION, null);
-  if (savedLoc) {
-    fetchNearbyPlaces(savedLoc.lat, savedLoc.lon);
-  } else {
-    renderCuratedPlacesDefault();
-  }
 
-  document
-    .getElementById("btnConfirmAddToTrip")
-    .addEventListener("click", () => {
-      const tripId = document.getElementById("chooseTripSelect").value;
-      if (!tripId || !pendingPlaceForTrip) return;
-      const info = CATEGORY_INFO[pendingPlaceForTrip.category];
-      const list = getItinerary();
-      list.push({
-        id: uid(),
-        tripId,
-        time: document.getElementById("chooseTripTime").value || "08:00",
-        activity: `Kunjungi ${pendingPlaceForTrip.name}`,
-        location: `${info.label} — ${pendingPlaceForTrip.name}`,
-      });
-      saveItinerary(list);
-      closeModal("modalChooseTrip");
-      pendingPlaceForTrip = null;
-      showToast("Tempat berhasil ditambahkan ke itinerary!", "success", "📌");
+  // Sudah pernah deteksi lokasi -> muat ulang tempat sekitar; kalau belum -> tampilkan data kurasi
+  const savedLoc = lsGet(LS_KEYS.LAST_LOCATION, null);
+  if (savedLoc) fetchNearbyPlaces(savedLoc.lat, savedLoc.lon);
+  else renderCuratedPlacesDefault();
+
+  $("btnConfirmAddToTrip").addEventListener("click", () => {
+    const tripId = $("chooseTripSelect").value;
+    if (!tripId || !pendingPlaceForTrip) return;
+    const info = CATEGORY_INFO[pendingPlaceForTrip.category];
+    const list = getItinerary();
+    list.push({
+      id: uid(),
+      tripId,
+      time: $("chooseTripTime").value || "08:00",
+      activity: `Kunjungi ${pendingPlaceForTrip.name}`,
+      location: `${info.label} — ${pendingPlaceForTrip.name}`,
     });
+    saveItinerary(list);
+    closeModal("modalChooseTrip");
+    pendingPlaceForTrip = null;
+    showToast("Tempat berhasil ditambahkan ke itinerary!", "success", "📌");
+  });
 
   /* ---------- BUDGET ---------- */
-  document
-    .getElementById("btnAddBudget")
-    .addEventListener("click", () => openModal("modalBudget"));
-  document.getElementById("formBudget").addEventListener("submit", (e) => {
+  $("btnAddBudget").addEventListener("click", () => openModal("modalBudget"));
+  $("formBudget").addEventListener("submit", (e) => {
     e.preventDefault();
-    const entry = {
-      id: uid(),
-      category: document.getElementById("budgetCategory").value,
-      amount: Number(document.getElementById("budgetNominal").value),
-      note: document.getElementById("budgetNote").value.trim(),
-      date: Date.now(),
-    };
     const list = lsGet(LS_KEYS.BUDGET, []);
-    list.push(entry);
+    list.push({
+      id: uid(),
+      category: $("budgetCategory").value,
+      amount: Number($("budgetNominal").value),
+      note: $("budgetNote").value.trim(),
+      date: Date.now(),
+    });
     lsSet(LS_KEYS.BUDGET, list);
     e.target.reset();
     closeModal("modalBudget");
@@ -3102,15 +2686,13 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   /* ---------- PACKING LIST ---------- */
-  document
-    .getElementById("btnAddPacking")
-    .addEventListener("click", () => openModal("modalPacking"));
-  document.getElementById("formPacking").addEventListener("submit", (e) => {
+  $("btnAddPacking").addEventListener("click", () => openModal("modalPacking"));
+  $("formPacking").addEventListener("submit", (e) => {
     e.preventDefault();
     const list = lsGet(LS_KEYS.PACKING, []);
     list.push({
       id: uid(),
-      name: document.getElementById("packingItemName").value.trim(),
+      name: $("packingItemName").value.trim(),
       checked: false,
     });
     lsSet(LS_KEYS.PACKING, list);
@@ -3121,17 +2703,15 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast("Barang packing ditambahkan.", "success", "🎒");
   });
 
-  /* ---------- NOTES ---------- */
-  document
-    .getElementById("btnAddNote")
-    .addEventListener("click", () => openModal("modalNote"));
-  document.getElementById("formNote").addEventListener("submit", (e) => {
+  /* ---------- CATATAN ---------- */
+  $("btnAddNote").addEventListener("click", () => openModal("modalNote"));
+  $("formNote").addEventListener("submit", (e) => {
     e.preventDefault();
     const list = lsGet(LS_KEYS.NOTES, []);
     list.push({
       id: uid(),
-      title: document.getElementById("noteTitle").value.trim(),
-      content: document.getElementById("noteContent").value.trim(),
+      title: $("noteTitle").value.trim(),
+      content: $("noteContent").value.trim(),
       createdAt: Date.now(),
     });
     lsSet(LS_KEYS.NOTES, list);
@@ -3141,14 +2721,321 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast("Catatan berhasil disimpan.", "success");
   });
 
-  /* ---------- GLOBAL SEARCH ---------- */
-  const searchInput = document.getElementById("globalSearch");
+  /* ---------- PENCARIAN GLOBAL ---------- */
+  const searchInput = $("globalSearch");
   searchInput.addEventListener("input", () =>
     performGlobalSearch(searchInput.value),
   );
   document.addEventListener("click", (e) => {
-    if (!e.target.closest(".topbar-search")) {
-      document.getElementById("searchResults").classList.add("hidden");
-    }
+    if (!e.target.closest(".topbar-search"))
+      $("searchResults").classList.add("hidden");
   });
 });
+
+/* =============================================================
+   TripMate — modul-peta.js  (Modul 1: Peta interaktif Leaflet)
+   Dimuat SETELAH script.js, fix-lokasi.js, dan library Leaflet.
+   Fitur: peta OpenStreetMap, marker tempat (kurasi vs OSM dibedakan),
+   lingkaran akurasi GPS, rute mobil (OSRM) dari lokasimu ke tempat,
+   dan "Atur lokasi manual" dengan mengetuk peta.
+   ============================================================= */
+(function () {
+  let map = null;
+  let layerPlaces = null;
+  let layerUser = null;
+  let layerRoute = null;
+  let manualMode = false;
+
+  /* ---------- Gaya khusus peta (disisipkan lewat JS) ---------- */
+  function injectStyle() {
+    const st = document.createElement("style");
+    st.textContent = `
+      #placesMap{height:380px;border-radius:14px;margin:0 0 16px;z-index:0}
+      #placesMap.manual{cursor:crosshair}
+      .tm-pin{font-size:20px;line-height:1;text-align:center;
+        filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
+      .tm-pin.approx{opacity:.75}
+      .tm-map-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+        margin-bottom:8px;font-size:13px}
+      .tm-popup{min-width:170px}
+      .tm-popup button{margin:6px 6px 0 0;cursor:pointer}
+    `;
+    document.head.appendChild(st);
+  }
+
+  /* ---------- Helper ---------- */
+  function setInfo(text) {
+    const el = document.getElementById("tmMapInfo");
+    if (el) el.textContent = text || "";
+  }
+
+  // Aturan yang sama dengan tombol "Lihat di Google Maps" pada kartu tempat
+  function googleMapsUrl(place) {
+    const q =
+      place.source === "curated"
+        ? [
+            ...new Set([place.name, place.address, place.city].filter(Boolean)),
+          ].join(", ")
+        : `${place.lat},${place.lon}`;
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+  }
+
+  // Tempat yang sedang tampil (mengikuti filter kategori & kota di halaman)
+  function visiblePlaces() {
+    let list = currentPlaces || [];
+    if (currentPlaceFilter !== "all") {
+      list = list.filter(
+        (p) => CATEGORY_INFO[p.category].filter === currentPlaceFilter,
+      );
+    }
+    if (currentCityFilter !== "all") {
+      list = list.filter(
+        (p) => p.source !== "curated" || p.city === currentCityFilter,
+      );
+    }
+    return list;
+  }
+
+  /* ---------- Inisialisasi peta ---------- */
+  function initMap() {
+    const wrap = document.getElementById("placesMapWrap");
+    if (!wrap) return;
+    if (typeof L === "undefined") {
+      wrap.innerHTML =
+        '<p class="empty-text">Peta gagal dimuat. Periksa koneksi internet.</p>';
+      return;
+    }
+
+    wrap.innerHTML = `
+      <div class="tm-map-bar">
+        <button class="btn btn-secondary btn-sm" id="tmBtnManual">📌 Atur lokasi manual</button>
+        <button class="btn btn-secondary btn-sm" id="tmBtnClearRoute">✖ Hapus rute</button>
+        <span id="tmMapInfo" style="color:var(--text-muted)"></span>
+      </div>
+      <div id="placesMap"></div>`;
+
+    const saved = lsGet(LS_KEYS.LAST_LOCATION, null);
+    const start = saved
+      ? [saved.lat, saved.lon]
+      : [
+          CURATED_CITIES["Kota Probolinggo"].center.lat,
+          CURATED_CITIES["Kota Probolinggo"].center.lon,
+        ];
+
+    map = L.map("placesMap").setView(start, 13);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; kontributor OpenStreetMap",
+    }).addTo(map);
+
+    layerPlaces = L.layerGroup().addTo(map);
+    layerUser = L.layerGroup().addTo(map);
+    layerRoute = L.layerGroup().addTo(map);
+
+    map.on("click", onMapClick);
+    document
+      .getElementById("tmBtnManual")
+      .addEventListener("click", toggleManual);
+    document.getElementById("tmBtnClearRoute").addEventListener("click", () => {
+      layerRoute.clearLayers();
+      setInfo("");
+    });
+  }
+
+  /* ---------- Lokasi pengguna di peta ---------- */
+  function drawUser() {
+    if (!map) return;
+    layerUser.clearLayers();
+    const loc = lsGet(LS_KEYS.LAST_LOCATION, null);
+    if (!loc) return;
+    if (loc.accuracy > 0) {
+      L.circle([loc.lat, loc.lon], {
+        radius: loc.accuracy,
+        color: "#2563eb",
+        weight: 1,
+        fillOpacity: 0.1,
+      }).addTo(layerUser);
+    }
+    L.circleMarker([loc.lat, loc.lon], {
+      radius: 8,
+      color: "#fff",
+      weight: 2,
+      fillColor: "#2563eb",
+      fillOpacity: 1,
+    })
+      .bindTooltip(loc.manual ? "Lokasi manual" : "Lokasimu")
+      .addTo(layerUser);
+  }
+
+  /* ---------- Marker tempat ---------- */
+  function popupFor(place) {
+    const isCurated = place.source === "curated";
+    const el = document.createElement("div");
+    el.className = "tm-popup";
+
+    const title = document.createElement("b");
+    title.textContent = place.name;
+    const sub = document.createElement("div");
+    sub.textContent =
+      CATEGORY_INFO[place.category].label +
+      (isCurated ? " · " + place.city : "");
+    el.append(title, sub);
+
+    if (isCurated) {
+      const warn = document.createElement("div");
+      warn.style.cssText = "color:#b45309;font-size:12px;margin-top:4px";
+      warn.textContent = "⚠️ Koordinat perkiraan";
+      el.append(warn);
+    }
+
+    const btnMaps = document.createElement("button");
+    btnMaps.className = "btn btn-secondary btn-sm";
+    btnMaps.textContent = "🗺️ Google Maps";
+    btnMaps.addEventListener("click", () =>
+      window.open(googleMapsUrl(place), "_blank", "noopener,noreferrer"),
+    );
+
+    const btnRoute = document.createElement("button");
+    btnRoute.className = "btn btn-primary btn-sm";
+    btnRoute.textContent = "🚗 Rute";
+    btnRoute.addEventListener("click", () => drawRoute(place));
+
+    el.append(btnMaps, btnRoute);
+    return el;
+  }
+
+  function drawPlaces() {
+    if (!map) return;
+    layerPlaces.clearLayers();
+    const list = visiblePlaces().filter((p) => p.lat != null && p.lon != null);
+
+    list.slice(0, 150).forEach((place) => {
+      const isCurated = place.source === "curated";
+      const icon = L.divIcon({
+        className: "",
+        html: `<div class="tm-pin ${isCurated ? "approx" : ""}">${CATEGORY_INFO[place.category].icon}</div>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+        popupAnchor: [0, -10],
+      });
+      L.marker([place.lat, place.lon], { icon })
+        .bindPopup(() => popupFor(place))
+        .addTo(layerPlaces);
+    });
+
+    // Sesuaikan tampilan: lokasimu + 12 tempat pertama (terdekat bila lokasi aktif)
+    const pts = list.slice(0, 12).map((p) => [p.lat, p.lon]);
+    const loc = lsGet(LS_KEYS.LAST_LOCATION, null);
+    if (loc) pts.push([loc.lat, loc.lon]);
+    if (pts.length)
+      map.fitBounds(L.latLngBounds(pts).pad(0.15), { maxZoom: 15 });
+  }
+
+  /* ---------- Rute mobil (OSRM demo server) ---------- */
+  async function drawRoute(place) {
+    const loc = lsGet(LS_KEYS.LAST_LOCATION, null);
+    if (!loc) {
+      showToast("Deteksi lokasimu dulu untuk membuat rute.", "error", "📍");
+      return;
+    }
+    map.closePopup();
+    setInfo("Menghitung rute...");
+    try {
+      // OSRM memakai urutan lon,lat (kebalikan dari Leaflet)
+      const url =
+        `https://router.project-osrm.org/route/v1/driving/` +
+        `${loc.lon},${loc.lat};${place.lon},${place.lat}?overview=full&geometries=geojson`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("OSRM error");
+      const data = await res.json();
+      const route = data.routes && data.routes[0];
+      if (!route) throw new Error("Rute tidak ditemukan");
+
+      layerRoute.clearLayers();
+      const line = L.geoJSON(route.geometry, {
+        style: { color: "#0ea5e9", weight: 5, opacity: 0.85 },
+      }).addTo(layerRoute);
+      map.fitBounds(line.getBounds().pad(0.15));
+
+      const approx =
+        place.source === "curated" ? " (titik tujuan perkiraan)" : "";
+      setInfo(
+        `🚗 ${formatDistance(route.distance)} · ± ${Math.max(1, Math.round(route.duration / 60))} menit ke ${place.name}${approx}`,
+      );
+    } catch (e) {
+      setInfo("");
+      showToast("Gagal membuat rute. Coba lagi nanti.", "error", "🚗");
+    }
+  }
+
+  /* ---------- Atur lokasi manual (ketuk peta) ---------- */
+  function toggleManual() {
+    manualMode = !manualMode;
+    document.getElementById("placesMap").classList.toggle("manual", manualMode);
+    document.getElementById("tmBtnManual").textContent = manualMode
+      ? "❌ Batal atur lokasi"
+      : "📌 Atur lokasi manual";
+    setInfo(manualMode ? "Ketuk titik di peta untuk menetapkan lokasimu." : "");
+  }
+
+  async function onMapClick(e) {
+    if (!manualMode) return;
+    const { lat, lng: lon } = e.latlng;
+    if (!isInsideIndonesia(lat, lon)) {
+      showToast("Titik di luar wilayah Indonesia.", "error", "🇮🇩");
+      return;
+    }
+    lsSet(LS_KEYS.LAST_LOCATION, {
+      lat,
+      lon,
+      accuracy: 10,
+      manual: true,
+      address: null,
+      timestamp: Date.now(),
+    });
+    toggleManual();
+    renderDashboard();
+    renderPlacesStatus();
+    fetchNearbyPlaces(lat, lon);
+    showToast("Lokasi manual disimpan.", "success", "📌");
+
+    const address = await reverseGeocode(lat, lon);
+    const current = lsGet(LS_KEYS.LAST_LOCATION, null);
+    if (address && current) {
+      lsSet(LS_KEYS.LAST_LOCATION, { ...current, address });
+      renderDashboard();
+      renderPlacesStatus();
+    }
+  }
+
+  /* ---------- Sambungkan ke fungsi yang sudah ada ---------- */
+  const origGrid = window.renderPlacesGrid;
+  window.renderPlacesGrid = function () {
+    origGrid();
+    drawPlaces();
+  };
+  const origStatus = window.renderPlacesStatus;
+  window.renderPlacesStatus = function () {
+    origStatus();
+    drawUser();
+  };
+  const origGoTo = window.goToPage;
+  window.goToPage = function (name) {
+    origGoTo(name);
+    if (name === "places" && map) {
+      // Peta di dalam halaman tersembunyi perlu dihitung ulang ukurannya
+      setTimeout(() => {
+        map.invalidateSize();
+        drawUser();
+        drawPlaces();
+      }, 150);
+    }
+  };
+
+  document.addEventListener("DOMContentLoaded", () => {
+    injectStyle();
+    initMap();
+    drawUser();
+    drawPlaces();
+  });
+})();
